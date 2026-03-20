@@ -1,0 +1,65 @@
+{
+	"name": "react-haptics",
+	"version": "1.0.0",
+	"description": "Haptic feedback for React web apps. Works on iOS Safari and Android Chrome.",
+	"type": "module",
+	"main": "./dist/index.cjs",
+	"module": "./dist/index.js",
+	"types": "./dist/index.d.ts",
+	"exports": {
+		".": {
+			"import": {
+				"types": "./dist/index.d.ts",
+				"default": "./dist/index.js"
+			},
+			"require": {
+				"types": "./dist/index.d.cts",
+				"default": "./dist/index.cjs"
+			}
+		}
+	},
+	"files": ["dist", "README.md", "LICENSE"],
+	"sideEffects": false,
+	"scripts": {
+		"build": "tsup",
+		"dev": "tsup --watch",
+		"type-check": "tsc --noEmit",
+		"test": "vitest run",
+		"prepublishOnly": "tsup"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/howdoiusekeyboard/react-haptics.git"
+	},
+	"homepage": "https://github.com/howdoiusekeyboard/react-haptics#readme",
+	"bugs": {
+		"url": "https://github.com/howdoiusekeyboard/react-haptics/issues"
+	},
+	"author": "Howdoiusekeyboard",
+	"peerDependencies": {
+		"react": ">=18.0.0",
+		"react-dom": ">=18.0.0"
+	},
+	"devDependencies": {
+		"@testing-library/react": "^16.3.2",
+		"@types/react": "^19.0.0",
+		"jsdom": "^29.0.0",
+		"react": "^19.0.0",
+		"react-dom": "^19.0.0",
+		"tsup": "^8.0.0",
+		"typescript": "^5.0.0",
+		"vitest": "^4.1.0"
+	},
+	"keywords": [
+		"react",
+		"haptics",
+		"haptic-feedback",
+		"vibration",
+		"ios",
+		"safari",
+		"web-haptics",
+		"mobile",
+		"tactile"
+	],
+	"license": "MIT"
+}

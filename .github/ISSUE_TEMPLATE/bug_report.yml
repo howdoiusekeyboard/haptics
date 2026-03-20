@@ -1,0 +1,69 @@
+name: Bug Report
+description: Report a bug with react-haptics
+labels: ["bug"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What happened?
+    validations:
+      required: true
+
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction steps
+      description: Minimal steps to reproduce the issue.
+      placeholder: |
+        1. Wrap app with HapticsProvider
+        2. Add data-haptic="success" to a button
+        3. Tap on iOS Safari
+        4. No haptic fires
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      description: What should have happened?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: platform
+    attributes:
+      label: Platform
+      options:
+        - iOS Safari
+        - Android Chrome
+        - Android Firefox
+        - Desktop
+        - Other
+    validations:
+      required: true
+
+  - type: input
+    id: browser-version
+    attributes:
+      label: Browser version
+      placeholder: "Safari 17.5, Chrome 126"
+    validations:
+      required: true
+
+  - type: input
+    id: package-version
+    attributes:
+      label: react-haptics version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+
+  - type: input
+    id: react-version
+    attributes:
+      label: React version (optional)
+      placeholder: "19.0.0"
+    validations:
+      required: false

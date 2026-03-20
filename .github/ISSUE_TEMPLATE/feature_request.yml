@@ -1,0 +1,28 @@
+name: Feature Request
+description: Suggest a new feature or API change
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: description
+    attributes:
+      label: Description
+      description: What feature or change are you proposing?
+    validations:
+      required: true
+
+  - type: textarea
+    id: use-case
+    attributes:
+      label: Use case
+      description: Why do you need this? What problem does it solve?
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed-api
+    attributes:
+      label: Proposed API (optional)
+      description: If you have an idea for the API surface, sketch it here.
+      render: tsx
+    validations:
+      required: false
