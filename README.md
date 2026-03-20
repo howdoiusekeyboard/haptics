@@ -1,5 +1,9 @@
 # react-haptics
 
+[![npm version](https://img.shields.io/npm/v/react-haptics)](https://www.npmjs.com/package/react-haptics)
+[![npm bundle size](https://img.shields.io/bundlephobia/minzip/react-haptics)](https://bundlephobia.com/package/react-haptics)
+[![license](https://img.shields.io/npm/l/react-haptics)](https://github.com/howdoiusekeyboard/react-haptics/blob/main/LICENSE)
+
 Haptic feedback for React web apps. Works on iOS Safari (17.4+) and Android Chrome.
 
 ## The problem
