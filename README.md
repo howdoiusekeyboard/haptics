@@ -1,6 +1,6 @@
 # haptics
 
-[![license](https://img.shields.io/npm/l/react-haptics)](https://github.com/howdoiusekeyboard/haptics/blob/main/LICENSE)
+[![license](https://img.shields.io/github/license/howdoiusekeyboard/haptics)](https://github.com/howdoiusekeyboard/haptics/blob/main/LICENSE)
 
 Haptic feedback for web apps. Works on iOS Safari (17.4+) and Android Chrome.
 
@@ -13,7 +13,6 @@ Haptic feedback for web apps. Works on iOS Safari (17.4+) and Android Chrome.
 | [`@haptics/vue`](./packages/vue) | [![npm](https://img.shields.io/npm/v/@haptics/vue)](https://www.npmjs.com/package/@haptics/vue) | Vue 3 bindings |
 | [`@haptics/svelte`](./packages/svelte) | [![npm](https://img.shields.io/npm/v/@haptics/svelte)](https://www.npmjs.com/package/@haptics/svelte) | Svelte 5 bindings |
 | [`@haptics/vanilla`](./packages/vanilla) | [![npm](https://img.shields.io/npm/v/@haptics/vanilla)](https://www.npmjs.com/package/@haptics/vanilla) | Zero-framework |
-| [`react-haptics`](./packages/react-haptics) | [![npm](https://img.shields.io/npm/v/react-haptics)](https://www.npmjs.com/package/react-haptics) | Backward-compat shim |
 
 ## The problem
 
