@@ -233,7 +233,3 @@ Framework adapter sizes exclude the workspace `@haptics/core` dependency (~1.33 
 **`prefers-reduced-motion`**: Honored by default. Calls are suppressed when the user has enabled reduced motion at the OS level. Pass `respectReducedMotion={false}` to override.
 
 **`event.defaultPrevented`**: The Vue directive and Svelte action skip the haptic when the click was already `preventDefault`'d by an earlier handler. The capture-phase listeners (provider / plugin / setupHaptics) run before bubble-phase `preventDefault` calls, so they always fire — useful for haptics on links that the framework intercepts for client-side navigation.
-
-## License
-
-MIT

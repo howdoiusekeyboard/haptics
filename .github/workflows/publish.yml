@@ -11,12 +11,13 @@ on:
       - "vanilla@*"
 
 permissions:
-  contents: read
+  contents: write
   id-token: write
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v6
 
@@ -74,3 +75,23 @@ jobs:
 
       - run: npm publish --provenance
         working-directory: ${{ steps.pkg.outputs.dir }}
+
+      - name: Create GitHub Release
+        if: success()
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+          PKG_DIR: ${{ steps.pkg.outputs.dir }}
+        run: |
+          if gh release view "$TAG" > /dev/null 2>&1; then
+            echo "Release $TAG already exists; skipping creation."
+            exit 0
+          fi
+          PKG_NAME=$(node -p "require('./${PKG_DIR}/package.json').name")
+          VERSION="${TAG##*@}"
+          gh release create "$TAG" \
+            --title "$TAG" \
+            --notes "\`$PKG_NAME@$VERSION\` published to npm with provenance.
+
+→ https://www.npmjs.com/package/$PKG_NAME/v/$VERSION
+→ See [CHANGELOG.md](./CHANGELOG.md) for release notes."
