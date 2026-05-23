@@ -1,18 +1,27 @@
 # haptics
 
-[![license](https://img.shields.io/github/license/howdoiusekeyboard/haptics)](https://github.com/howdoiusekeyboard/haptics/blob/main/LICENSE)
+<p>
+  <a href="https://github.com/howdoiusekeyboard/haptics/actions/workflows/ci.yml"><img src="https://github.com/howdoiusekeyboard/haptics/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://www.npmjs.com/package/@haptics/react"><img src="https://img.shields.io/npm/dm/@haptics/react.svg?label=npm%20downloads" alt="npm downloads" /></a>
+  <a href="https://bundlephobia.com/package/@haptics/react"><img src="https://img.shields.io/bundlephobia/minzip/@haptics/react?label=%40haptics%2Freact%20gzip" alt="bundle size" /></a>
+  <a href="https://github.com/howdoiusekeyboard/haptics/blob/main/LICENSE"><img src="https://img.shields.io/github/license/howdoiusekeyboard/haptics" alt="license" /></a>
+</p>
 
-Haptic feedback for web apps. Works on iOS Safari (17.4+) and Android Chrome.
+**Haptic feedback for the web — actually works on iOS Safari.**
+~1 KB gzip per adapter. React, Vue, Svelte, or any framework.
+
+> [!NOTE]
+> A short demo of the haptic firing on a real iPhone goes here once recorded. See [`assets/hero.gif`](./assets/hero.gif).
 
 ## Packages
 
-| Package | Version | Description |
-| --- | --- | --- |
-| [`@haptics/core`](./packages/core) | [![npm](https://img.shields.io/npm/v/@haptics/core)](https://www.npmjs.com/package/@haptics/core) | Framework-agnostic engine |
-| [`@haptics/react`](./packages/react) | [![npm](https://img.shields.io/npm/v/@haptics/react)](https://www.npmjs.com/package/@haptics/react) | React bindings |
-| [`@haptics/vue`](./packages/vue) | [![npm](https://img.shields.io/npm/v/@haptics/vue)](https://www.npmjs.com/package/@haptics/vue) | Vue 3 bindings |
-| [`@haptics/svelte`](./packages/svelte) | [![npm](https://img.shields.io/npm/v/@haptics/svelte)](https://www.npmjs.com/package/@haptics/svelte) | Svelte 5 bindings |
-| [`@haptics/vanilla`](./packages/vanilla) | [![npm](https://img.shields.io/npm/v/@haptics/vanilla)](https://www.npmjs.com/package/@haptics/vanilla) | Zero-framework |
+| Package | Version | Size (gzip) | Description |
+| --- | --- | --- | --- |
+| [`@haptics/core`](./packages/core) | [![npm](https://img.shields.io/npm/v/@haptics/core)](https://www.npmjs.com/package/@haptics/core) | 1.33 KB | Framework-agnostic engine |
+| [`@haptics/react`](./packages/react) | [![npm](https://img.shields.io/npm/v/@haptics/react)](https://www.npmjs.com/package/@haptics/react) | 1.04 KB | React bindings |
+| [`@haptics/vue`](./packages/vue) | [![npm](https://img.shields.io/npm/v/@haptics/vue)](https://www.npmjs.com/package/@haptics/vue) | 1.33 KB | Vue 3 bindings |
+| [`@haptics/svelte`](./packages/svelte) | [![npm](https://img.shields.io/npm/v/@haptics/svelte)](https://www.npmjs.com/package/@haptics/svelte) | 1.09 KB | Svelte 5 bindings |
+| [`@haptics/vanilla`](./packages/vanilla) | [![npm](https://img.shields.io/npm/v/@haptics/vanilla)](https://www.npmjs.com/package/@haptics/vanilla) | 0.89 KB | Zero-framework |
 
 ## The problem
 
