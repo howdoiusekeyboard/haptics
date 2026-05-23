@@ -89,9 +89,8 @@ jobs:
           fi
           PKG_NAME=$(node -p "require('./${PKG_DIR}/package.json').name")
           VERSION="${TAG##*@}"
-          gh release create "$TAG" \
-            --title "$TAG" \
-            --notes "\`$PKG_NAME@$VERSION\` published to npm with provenance.
-
-→ https://www.npmjs.com/package/$PKG_NAME/v/$VERSION
-→ See [CHANGELOG.md](./CHANGELOG.md) for release notes."
+          NOTES=$(printf '%s\n\n%s\n%s\n' \
+            "\`${PKG_NAME}@${VERSION}\` published to npm with provenance." \
+            "→ https://www.npmjs.com/package/${PKG_NAME}/v/${VERSION}" \
+            "→ See [CHANGELOG.md](./CHANGELOG.md) for release notes.")
+          gh release create "$TAG" --title "$TAG" --notes "$NOTES"
