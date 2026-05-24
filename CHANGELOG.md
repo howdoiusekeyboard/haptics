@@ -4,6 +4,12 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.1] - 2026-05-24
+
+### Fixed
+
+- **`@haptics/react` and `react-haptics`: published bundles now carry the `"use client";` directive.** The 2.0.0 and 2.1.0 releases both shipped without it — both ESM and CJS bundles started with the import line instead. This broke every Next.js App Router consumer of `<HapticsProvider>`, which requires the directive to mark the boundary between server and client components. The tsup `banner` option + source-level directives were silently stripped by rollup during the dts pass (visible in the build log as `Module level directives cause errors when bundled`). Fixed via a tsup `onSuccess` hook that post-processes each emitted bundle to prepend the directive. Verified: `head -1 dist/index.js` returns `"use client";` for both packages after build. Only `@haptics/react` and `react-haptics` are affected; the other packages don't contain React components.
+
 ## [2.1.0] - 2026-05-24
 
 Additive minor release. Closes five capability gaps relative to `web-haptics` (lochie/web-haptics, MIT) and adopts selected upstream proposals. No breaking API changes.
@@ -45,7 +51,6 @@ The new IIFE artifact for `@haptics/vanilla` (`dist/haptics.global.js`, ~3.7 KB 
 ### Attribution
 
 The duration-scaling approach for Android (the `MIN_VIBRATE_MS = 5` floor in particular), the intensity-to-tick-gap formula on iOS, the WebAudio click synthesis, and the `repeat` trigger option were adapted from `lochie/web-haptics` (MIT). The behaviors were re-derived in TDD form for our codebase; the PR #28 lesson about sub-5 ms pulses being imperceptible on real Android motors is encoded in our tests.
-
 ## [2.0.0] - 2026-05-24
 
 ### Fixed

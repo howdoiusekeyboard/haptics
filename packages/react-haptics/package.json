@@ -1,6 +1,6 @@
 {
 	"name": "react-haptics",
-	"version": "2.0.0",
+	"version": "2.1.1",
 	"description": "Haptic feedback for React. Convenience package re-exporting @haptics/react and @haptics/core.",
 	"type": "module",
 	"main": "./dist/index.cjs",

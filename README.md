@@ -273,7 +273,7 @@ Framework adapter sizes exclude the workspace `@haptics/core` dependency (~1.85 
 
 **Pattern length cap**: Patterns are clamped to 64 segments and a total scheduled offset of 60 seconds. Runaway patterns from buggy or untrusted input are truncated rather than queueing thousands of timers.
 
-**`prefers-reduced-motion`**: Not honored by default (changed in 1.1.0). The CSS query targets visual animation, not haptic feedback; iOS provides a separate System Haptics toggle for haptic preference. Pass `respectReducedMotion={true}` if you want Reduce Motion to also gate haptics.
+**`prefers-reduced-motion`**: Not honored by default (changed in 2.0.0). The CSS query targets visual animation, not haptic feedback; iOS provides a separate System Haptics toggle for haptic preference. Pass `respectReducedMotion={true}` if you want Reduce Motion to also gate haptics.
 
 **`event.defaultPrevented`**: The Vue directive and Svelte action skip the haptic when the click was already `preventDefault`'d by an earlier handler. The capture-phase listeners (provider / plugin / setupHaptics) run before bubble-phase `preventDefault` calls, so they always fire — useful for haptics on links that the framework intercepts for client-side navigation.
 
