@@ -65,7 +65,7 @@ describe("vHaptic directive", () => {
 		await Promise.resolve();
 		await wrapper.find("#btn").trigger("click");
 
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 		wrapper.unmount();
 	});
 

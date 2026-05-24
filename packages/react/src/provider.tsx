@@ -16,6 +16,17 @@ export interface HapticsProviderProps {
 	 * The CSS query targets visual animation; iOS has a separate System Haptics toggle.
 	 */
 	respectReducedMotion?: boolean;
+	/**
+	 * Outline injected iOS overlays + log attach/detach events via console.debug.
+	 * Pure development aid. Default: false.
+	 */
+	debugOverlay?: boolean;
+	/**
+	 * Play a WebAudio click cue on desktop browsers (no Vibration API, not iOS).
+	 * Useful for desktop visitors and developers testing without a haptic device.
+	 * Lazy-loaded — no bundle cost when omitted. Default: false.
+	 */
+	audioFallback?: boolean;
 }
 
 export const HapticsContext = createContext<HapticsContextValue | null>(null);
@@ -36,6 +47,8 @@ export function HapticsProvider({
 	children,
 	patterns: customPatterns,
 	respectReducedMotion = false,
+	debugOverlay = false,
+	audioFallback = false,
 }: HapticsProviderProps) {
 	const allPatterns = useMemo(
 		() => ({ ...PRESETS, ...customPatterns }),
@@ -48,12 +61,14 @@ export function HapticsProvider({
 	useEffect(() => {
 		return attachHaptics({
 			respectReducedMotion,
+			debugOverlay,
+			audioFallback,
 			getPattern: (name) =>
 				Object.prototype.hasOwnProperty.call(patternsRef.current, name)
 					? patternsRef.current[name as keyof typeof patternsRef.current]
 					: undefined,
 		});
-	}, [respectReducedMotion]);
+	}, [respectReducedMotion, debugOverlay, audioFallback]);
 
 	const ctx = useMemo(
 		() => ({ patterns: allPatterns, respectReducedMotion }),

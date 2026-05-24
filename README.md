@@ -131,6 +131,22 @@ const haptics = new Haptics();
 // Or imperatively: haptics.trigger("success");
 ```
 
+### Plain HTML via `<script>` tag (2.1.0)
+
+`@haptics/vanilla` ships a self-contained IIFE bundle for use without a bundler — HTMX, Alpine.js, plain HTML pages.
+
+```html
+<script src="https://unpkg.com/@haptics/vanilla"></script>
+<script>
+  const haptics = new Haptics();
+  document.querySelector("#save").addEventListener("click", () =>
+    haptics.trigger("success"),
+  );
+</script>
+```
+
+The script tag makes `window.Haptics` (the class) and `window.HapticsLib` (the full module) available.
+
 ## Presets
 
 | Name | Feel | Use case |
@@ -169,6 +185,16 @@ Custom patterns are merged with built-in presets. Same-name customs override the
 | --- | --- | --- | --- |
 | `respectReducedMotion` | `boolean` | `false` | Suppresses haptics when `prefers-reduced-motion: reduce` is active. Default is off because the CSS query targets visual animation, not haptic feedback — iOS has a dedicated System Haptics toggle. Opt in if you want Reduce Motion to also gate haptics. |
 | `patterns` | `Record<string, HapticPattern>` | `{}` | Custom patterns merged with built-in presets |
+| `debugOverlay` | `boolean` | `false` | Outline injected iOS overlays with a dashed border and emit `console.debug` logs on attach/detach. Dev aid for tracing where overlays land and which `MutationObserver`-driven mounts pick them up. (2.1.0) |
+| `audioFallback` | `boolean` | `false` | Play a WebAudio click cue on desktop browsers (no Vibration API, not iOS). Lazy-loaded — consumers who omit this pay no bundle cost. (2.1.0) |
+
+### Trigger options
+
+`trigger(name, options?)` on every adapter accepts:
+
+| Option | Type | Default | Description |
+| --- | --- | --- | --- |
+| `repeat` | `boolean` | `false` | Loop the pattern continuously until `cancel()` is called. Android path only — iOS triggers remain best-effort single-tick per call. Second call with `repeat: true` replaces the prior loop. (2.1.0) |
 
 ## Platform support
 
@@ -250,3 +276,27 @@ Framework adapter sizes exclude the workspace `@haptics/core` dependency (~1.85 
 **`prefers-reduced-motion`**: Not honored by default (changed in 1.1.0). The CSS query targets visual animation, not haptic feedback; iOS provides a separate System Haptics toggle for haptic preference. Pass `respectReducedMotion={true}` if you want Reduce Motion to also gate haptics.
 
 **`event.defaultPrevented`**: The Vue directive and Svelte action skip the haptic when the click was already `preventDefault`'d by an earlier handler. The capture-phase listeners (provider / plugin / setupHaptics) run before bubble-phase `preventDefault` calls, so they always fire — useful for haptics on links that the framework intercepts for client-side navigation.
+
+## FAQ
+
+### Why doesn't `trigger()` from `useEffect` or a `try/catch` fire on iOS?
+
+Safari requires haptics calls to originate inside a native user gesture stack — the synchronous call path from a click/tap/keydown handler. Any call that resumes after `await`, fires from `useEffect`, runs inside a `setTimeout`/`setInterval`, or sits inside a `try/catch` whose synchronous path has already returned will not fire haptic on iOS. The library's `trigger()` is best-effort: it tries `iosTick()` regardless, but iOS only fires the Taptic Engine when the call is still inside the original user gesture.
+
+The reliable iOS path is **declarative**:
+
+```tsx
+<button data-haptic="success" onClick={handleSave}>Save</button>
+```
+
+With `HapticsProvider`/`HapticsPlugin`/`setupHaptics`/`Haptics` installed, the library attaches an invisible switch overlay on iOS. The user's tap lands on the overlay (a real native gesture) and fires haptic before your handler runs. The handler can do anything — `await`, dispatch reducers, `try/catch`, fetch, throw — the haptic has already fired.
+
+Android is more permissive: `navigator.vibrate()` can be called from anywhere (including inside `useEffect` or after `await`) and will fire normally. Only iOS has the user-gesture constraint.
+
+### Multi-tick presets only fire one tick on my iPhone
+
+Expected on iOS 26.5+. Apple's 26.5 patch closed every programmatic mechanism for firing a second tick (synchronous `.click()` chains, fresh switches per tick, `setTimeout` chains, stacked switches — all verified to deliver ≤1 buzz). Single-tick presets like `selection` are unaffected. iOS 17.4–26.4 retains full multi-tick.
+
+### How do I hear the haptic on my laptop while developing?
+
+Pass `audioFallback: true` to the provider/plugin/`setupHaptics`/`Haptics` constructor (2.1.0). The library loads a tiny WebAudio module on demand and plays a filtered click sound on desktop browsers. The audio module is lazy-loaded — opt in to pay the bundle cost only when you want it.

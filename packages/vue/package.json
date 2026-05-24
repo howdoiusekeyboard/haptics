@@ -1,6 +1,6 @@
 {
 	"name": "@haptics/vue",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"description": "Vue plugin, directive, and composable for haptic feedback. iOS Safari and Android Vibration API.",
 	"type": "module",
 	"main": "./dist/index.cjs",

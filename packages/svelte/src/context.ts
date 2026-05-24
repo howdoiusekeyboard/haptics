@@ -33,6 +33,10 @@ export function setupHaptics(
 	options: {
 		patterns?: Record<string, HapticPattern>;
 		respectReducedMotion?: boolean;
+		/** Outline iOS overlays + log attach/detach via console.debug. Default: false. */
+		debugOverlay?: boolean;
+		/** Play a WebAudio click cue on desktop. Lazy-loaded. Default: false. */
+		audioFallback?: boolean;
 	} = {},
 ): void {
 	// Idempotent: tear down handlers from a prior call before re-attaching.
@@ -48,6 +52,8 @@ export function setupHaptics(
 
 	_cleanup = attachHaptics({
 		respectReducedMotion,
+		debugOverlay: options.debugOverlay ?? false,
+		audioFallback: options.audioFallback ?? false,
 		getPattern: (name) =>
 			Object.prototype.hasOwnProperty.call(patterns, name)
 				? patterns[name]

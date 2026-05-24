@@ -4,6 +4,48 @@ All notable changes to this project will be documented in this file.
 
 Format based on [Keep a Changelog](https://keepachangelog.com/).
 
+## [2.1.0] - 2026-05-24
+
+Additive minor release. Closes five capability gaps relative to `web-haptics` (lochie/web-haptics, MIT) and adopts selected upstream proposals. No breaking API changes.
+
+### Added
+
+- **Intensity-aware Android vibrations.** `toVibrateSequence` now reflects `vibration.intensity < 1` by scaling the segment's duration (`scaled = max(5, round(duration * intensity))`) and pushing the remainder as silence. Built-in presets carry intensity values, so all presets now feel distinguishable on Android instead of all firing identically. Approach adapted from `web-haptics` PR #28, which documented that PWM-style modulation at 20 ms cycles falls below the perception threshold of real phone vibration motors (sub-5 ms drive times produce no tactile output).
+- **Intensity-driven iOS overlay tick spacing.** Multi-segment patterns on iOS 17.4–26.4 now schedule subsequent ticks at intensity-mapped intervals — `TOGGLE_MIN + (1 - intensity) * TOGGLE_MAX` (16 ms at full intensity, 200 ms at zero). Higher intensity produces tighter ticks; the perceived strength now varies with pattern intensity even on iOS. iOS 26.5+ still degrades to a single tick (per the 2.0.0 known-limitations entry).
+- **`requestAnimationFrame`-driven multi-tick scheduling.** The iOS overlay path now uses RAF instead of `setTimeout` chains for its subsequent ticks. RAF aligns with paint and is less affected by setTimeout's 4–15 ms jitter under load.
+- **`AttachHapticsOptions.debugOverlay`** (and propagation through every adapter — `HapticsProvider`, `HapticsPlugin`, `setupHaptics`, `Haptics`). When true, injected iOS overlays receive a dashed outline so you can see exactly which elements got an overlay, and each attach/detach event logs at `console.debug` level (useful for tracing `MutationObserver`-driven dynamic mounts). Default: false.
+- **`AttachHapticsOptions.audioFallback`** (and propagation through every adapter). When true on desktop browsers (no Vibration API, not iOS), wires a tiny WebAudio "click" cue into each `[data-haptic]` handler so desktop visitors and developers testing without haptic hardware get an audible confirmation. The audio module loads lazily via dynamic `import()` only when the option is enabled — consumers who omit it pay no bundle cost. Default: false.
+- **`TriggerOptions.repeat`** on every adapter's imperative `trigger(name, { repeat: true })`. Loops the vibration pattern continuously until `cancel()` is called — useful for buzz/recording indicators and game loops. Single active loop per controller (second `trigger({ repeat: true })` replaces the first). Android path only; iOS triggers remain best-effort single-tick.
+- **`@haptics/vanilla` ships an IIFE build** at `dist/haptics.global.js` (~3.7 KB gzip, self-contained) plus `unpkg`/`jsdelivr` fields in `package.json`. Drop it into a plain HTML page with `<script src="https://unpkg.com/@haptics/vanilla">` and `window.Haptics` is the class — no module loader required. Compatible with HTMX, Alpine.js, and plain HTML pages.
+
+### Fixed
+
+- **Multi-tick cascade on iOS 17.4–26.4.** Consumer `onclick` handlers attached to `[data-haptic]` elements previously fired once per scheduled tick on multi-segment patterns (e.g. `success` produced three handler invocations) because each programmatic `sw.click()` re-entered the overlay's listener and re-dispatched to the host. The overlay now tags programmatic re-entries and stops the click from bubbling — consumer handlers see one logical invocation per user tap. Multi-tick haptic firing is unaffected. Edge case: a consumer that was counting handler invocations to detect multi-tick patterns will see a behavior change, but no such pattern is documented and the previous behavior wasn't intentional.
+
+### Changed (behavior)
+
+- **`toVibrateSequence(PRESETS.<name>)` returns intensity-scaled sequences** for presets that declare an `intensity` value. For example, `toVibrateSequence(PRESETS.selection)` now returns `[9, 6]` instead of `[15]`. Signature is unchanged; existing patterns without an `intensity` field pass through identically.
+
+### Bundle impact
+
+Measured against the 2.0.0 baseline (`gzip -c < dist/index.js | wc -c`):
+
+| Package | 2.0.0 | 2.1.0 | Delta |
+| --- | --- | --- | --- |
+| `@haptics/core` | 2700 B | 3570 B | +870 B |
+| `@haptics/react` | 906 B | 1115 B | +209 B |
+| `@haptics/vue` | 910 B | 1096 B | +186 B |
+| `@haptics/svelte` | 820 B | 1000 B | +180 B |
+| `@haptics/vanilla` | 804 B | 985 B | +181 B |
+
+The audio fallback ships as a separate `audio-fallback-*.js` chunk (~715 B gzip) that the bundler loads only when `audioFallback: true` is set. Consumers who don't opt in pay zero bytes for that feature.
+
+The new IIFE artifact for `@haptics/vanilla` (`dist/haptics.global.js`, ~3.7 KB gzip self-contained) does not affect npm-bundled consumers — it's a separate file referenced by the `unpkg` / `jsdelivr` package.json fields for CDN script-tag use.
+
+### Attribution
+
+The duration-scaling approach for Android (the `MIN_VIBRATE_MS = 5` floor in particular), the intensity-to-tick-gap formula on iOS, the WebAudio click synthesis, and the `repeat` trigger option were adapted from `lochie/web-haptics` (MIT). The behaviors were re-derived in TDD form for our codebase; the PR #28 lesson about sub-5 ms pulses being imperceptible on real Android motors is encoded in our tests.
+
 ## [2.0.0] - 2026-05-24
 
 ### Fixed

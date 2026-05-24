@@ -58,7 +58,7 @@ describe("HapticsPlugin", () => {
 		app.use(HapticsPlugin);
 
 		btn.click();
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 
 		document.body.removeChild(btn);
 	});
@@ -74,7 +74,7 @@ describe("HapticsPlugin", () => {
 		await Promise.resolve();
 
 		btn.click();
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 
 		document.body.removeChild(btn);
 	});

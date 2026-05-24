@@ -43,7 +43,7 @@ describe("haptic action", () => {
 		await Promise.resolve();
 
 		node.click();
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 
 		document.body.removeChild(node);
 	});
@@ -75,7 +75,7 @@ describe("haptic action", () => {
 		action.update("success");
 		node.click();
 
-		expect(vibrateMock).toHaveBeenCalledWith([30, 15, 40, 10, 50]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 36, 24, 26, 50]);
 
 		document.body.removeChild(node);
 	});

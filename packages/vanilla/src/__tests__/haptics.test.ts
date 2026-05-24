@@ -39,7 +39,7 @@ describe("Haptics", () => {
 	it("triggers vibration imperatively", () => {
 		const h = new Haptics();
 		h.trigger("selection");
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 		h.destroy();
 	});
 
@@ -78,7 +78,7 @@ describe("Haptics", () => {
 		await Promise.resolve();
 
 		btn.click();
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 
 		h.destroy();
 		document.body.removeChild(container);
@@ -96,7 +96,7 @@ describe("Haptics", () => {
 		const h = new Haptics({ delegateFrom: container });
 
 		btn.click();
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 
 		h.destroy();
 		document.body.removeChild(container);
@@ -144,5 +144,69 @@ describe("Haptics", () => {
 		expect(() => h.trigger("__proto__")).not.toThrow();
 		expect(vibrateMock).not.toHaveBeenCalled();
 		h.destroy();
+	});
+
+	describe("repeat option (2.1.0)", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("re-fires vibration on a loop when repeat is true", () => {
+			const h = new Haptics();
+			h.trigger("selection", { repeat: true });
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+
+			vi.advanceTimersByTime(100);
+			expect(vibrateMock.mock.calls.length).toBeGreaterThan(1);
+
+			h.cancel();
+			h.destroy();
+		});
+
+		it("cancel() stops the loop", () => {
+			const h = new Haptics();
+			h.trigger("selection", { repeat: true });
+			h.cancel();
+
+			const callsAfterCancel = vibrateMock.mock.calls.length;
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock.mock.calls.length).toBe(callsAfterCancel);
+
+			h.destroy();
+		});
+
+		it("destroy() stops the loop", () => {
+			const h = new Haptics();
+			h.trigger("selection", { repeat: true });
+			h.destroy();
+
+			const callsBefore = vibrateMock.mock.calls.length;
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock.mock.calls.length).toBe(callsBefore);
+		});
+
+		it("does not loop when repeat is omitted", () => {
+			const h = new Haptics();
+			h.trigger("selection");
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+			h.destroy();
+		});
+
+		it("rejects empty-pattern + repeat without scheduling a loop", () => {
+			// Diff-review Finding 1: an empty pattern with repeat:true would
+			// otherwise schedule setTimeout(_, 1ms) and spam navigator.vibrate([]).
+			const h = new Haptics({ patterns: { empty: [] } });
+			h.trigger("empty", { repeat: true });
+			expect(vibrateMock).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock).not.toHaveBeenCalled();
+			h.destroy();
+		});
 	});
 });

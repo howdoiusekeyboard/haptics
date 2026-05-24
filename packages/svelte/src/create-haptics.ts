@@ -8,8 +8,21 @@ import {
 import type { PresetName } from "@haptics/core";
 import { getHapticsConfig } from "./context";
 
+/** Options for the imperative `trigger()` call. */
+export interface TriggerOptions {
+	/**
+	 * When true, the vibration pattern repeats continuously until `cancel()`
+	 * is called. Loop affects the Android (Vibration API) path only — iOS
+	 * triggers remain best-effort single-tick per call. Default: false.
+	 */
+	repeat?: boolean;
+}
+
 export interface HapticsController {
-	trigger: (action: PresetName | (string & {})) => void;
+	trigger: (
+		action: PresetName | (string & {}),
+		options?: TriggerOptions,
+	) => void;
 	cancel: () => void;
 	/** Release the matchMedia listener registered by this controller. Idempotent. */
 	destroy: () => void;
@@ -45,6 +58,14 @@ export function createHaptics(): HapticsController {
 
 	let prefersReducedMotion = false;
 	let mqlCleanup: (() => void) | null = null;
+	let loopId: ReturnType<typeof setTimeout> | null = null;
+
+	const clearLoop = () => {
+		if (loopId !== null) {
+			clearTimeout(loopId);
+			loopId = null;
+		}
+	};
 
 	if (typeof window !== "undefined" && window.matchMedia) {
 		const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -56,25 +77,44 @@ export function createHaptics(): HapticsController {
 		mqlCleanup = () => mql.removeEventListener("change", onChange);
 	}
 
-	const trigger = (action: PresetName | (string & {})) => {
+	const trigger = (
+		action: PresetName | (string & {}),
+		options?: TriggerOptions,
+	) => {
 		if (respectReducedMotion && prefersReducedMotion) return;
 
 		if (!Object.prototype.hasOwnProperty.call(patterns, action)) return;
 		const pattern = patterns[action as keyof typeof patterns];
-		if (!pattern) return;
+		if (!pattern || pattern.length === 0) return;
+
+		clearLoop();
 
 		if (isVibrationSupported()) {
-			navigator.vibrate(toVibrateSequence(pattern));
+			const seq = toVibrateSequence(pattern);
+			navigator.vibrate(seq);
+			if (options?.repeat) {
+				const totalMs = Math.max(
+					1,
+					seq.reduce((s, n) => s + n, 0),
+				);
+				const tick = () => {
+					navigator.vibrate(seq);
+					loopId = setTimeout(tick, totalMs);
+				};
+				loopId = setTimeout(tick, totalMs);
+			}
 		} else if (isIOS()) {
 			schedulePattern(pattern);
 		}
 	};
 
 	const cancel = () => {
+		clearLoop();
 		if (isVibrationSupported()) navigator.vibrate(0);
 	};
 
 	const destroy = () => {
+		clearLoop();
 		mqlCleanup?.();
 		mqlCleanup = null;
 	};

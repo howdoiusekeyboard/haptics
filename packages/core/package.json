@@ -1,6 +1,6 @@
 {
 	"name": "@haptics/core",
-	"version": "2.0.0",
+	"version": "2.1.0",
 	"description": "Framework-agnostic haptic feedback engine. Platform detection, pattern scheduling, and presets for iOS and Android.",
 	"type": "module",
 	"main": "./dist/index.cjs",
