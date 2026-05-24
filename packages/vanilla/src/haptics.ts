@@ -26,6 +26,26 @@ export interface HapticsOptions {
 	 * The CSS query targets visual animation; iOS has a separate System Haptics toggle.
 	 */
 	respectReducedMotion?: boolean;
+	/**
+	 * Outline injected iOS overlays + log attach/detach events via console.debug.
+	 * Pure development aid. Default: false.
+	 */
+	debugOverlay?: boolean;
+	/**
+	 * Play a WebAudio click cue on desktop browsers (no Vibration API, not iOS).
+	 * Lazy-loaded — no bundle cost when omitted. Default: false.
+	 */
+	audioFallback?: boolean;
+}
+
+/** Options for the imperative `trigger()` call. */
+export interface TriggerOptions {
+	/**
+	 * When true, the vibration pattern repeats continuously until `cancel()`
+	 * is called. Loop affects the Android (Vibration API) path only — iOS
+	 * triggers remain best-effort single-tick per call. Default: false.
+	 */
+	repeat?: boolean;
 }
 
 /**
@@ -48,6 +68,7 @@ export class Haptics {
 	private mqlHandler: ((e: MediaQueryListEvent) => void) | null = null;
 	private mql: MediaQueryList | null = null;
 	private lastCancel: (() => void) | null = null;
+	private loopId: ReturnType<typeof setTimeout> | null = null;
 	private detach: () => void;
 
 	readonly isSupported: boolean;
@@ -78,6 +99,8 @@ export class Haptics {
 			root: options.delegateFrom,
 			selector: options.selector,
 			respectReducedMotion: this.respectReducedMotion,
+			debugOverlay: options.debugOverlay ?? false,
+			audioFallback: options.audioFallback ?? false,
 			getPattern: (name) =>
 				Object.prototype.hasOwnProperty.call(this.patterns, name)
 					? this.patterns[name]
@@ -86,7 +109,7 @@ export class Haptics {
 	}
 
 	/** Trigger haptic feedback imperatively by pattern name. */
-	trigger(action: PresetName | (string & {})): void {
+	trigger(action: PresetName | (string & {}), options?: TriggerOptions): void {
 		if (this.destroyed) return;
 		if (this.respectReducedMotion && this.prefersReducedMotion) return;
 
@@ -94,8 +117,22 @@ export class Haptics {
 		const pattern = this.patterns[action];
 		if (!pattern) return;
 
+		this.clearLoop();
+
 		if (this.isSupported) {
-			navigator.vibrate(toVibrateSequence(pattern));
+			const seq = toVibrateSequence(pattern);
+			navigator.vibrate(seq);
+			if (options?.repeat) {
+				const totalMs = Math.max(
+					1,
+					seq.reduce((s, n) => s + n, 0),
+				);
+				const tick = () => {
+					navigator.vibrate(seq);
+					this.loopId = setTimeout(tick, totalMs);
+				};
+				this.loopId = setTimeout(tick, totalMs);
+			}
 		} else if (this.isIOSSupported) {
 			this.lastCancel = schedulePattern(pattern);
 		}
@@ -103,6 +140,7 @@ export class Haptics {
 
 	/** Cancel active vibration (Android) and clear pending iOS pattern ticks. */
 	cancel(): void {
+		this.clearLoop();
 		if (this.isSupported) navigator.vibrate(0);
 		this.lastCancel?.();
 		this.lastCancel = null;
@@ -113,6 +151,7 @@ export class Haptics {
 		if (this.destroyed) return;
 		this.destroyed = true;
 
+		this.clearLoop();
 		this.detach();
 
 		if (this.mql && this.mqlHandler) {
@@ -121,5 +160,12 @@ export class Haptics {
 
 		this.lastCancel?.();
 		this.lastCancel = null;
+	}
+
+	private clearLoop(): void {
+		if (this.loopId !== null) {
+			clearTimeout(this.loopId);
+			this.loopId = null;
+		}
 	}
 }

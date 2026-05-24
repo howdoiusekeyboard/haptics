@@ -44,7 +44,7 @@ describe("createHaptics", () => {
 	it("triggers vibration for a built-in preset", () => {
 		const haptics = createHaptics();
 		haptics.trigger("selection");
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 	});
 
 	it("does not call vibrate for unknown preset", () => {
@@ -85,5 +85,58 @@ describe("createHaptics", () => {
 		haptics.trigger("toString");
 		expect(vibrateMock).not.toHaveBeenCalled();
 		haptics.destroy();
+	});
+
+	describe("repeat option (2.1.0)", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("re-fires vibration on a loop when repeat is true", () => {
+			const haptics = createHaptics();
+			haptics.trigger("selection", { repeat: true });
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+
+			vi.advanceTimersByTime(100);
+			expect(vibrateMock.mock.calls.length).toBeGreaterThan(1);
+
+			haptics.cancel();
+			haptics.destroy();
+		});
+
+		it("cancel() stops the loop", () => {
+			const haptics = createHaptics();
+			haptics.trigger("selection", { repeat: true });
+			haptics.cancel();
+
+			const callsAfterCancel = vibrateMock.mock.calls.length;
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock.mock.calls.length).toBe(callsAfterCancel);
+
+			haptics.destroy();
+		});
+
+		it("destroy() stops the loop", () => {
+			const haptics = createHaptics();
+			haptics.trigger("selection", { repeat: true });
+			haptics.destroy();
+
+			const callsBefore = vibrateMock.mock.calls.length;
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock.mock.calls.length).toBe(callsBefore);
+		});
+
+		it("does not loop when repeat is omitted", () => {
+			const haptics = createHaptics();
+			haptics.trigger("selection");
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+			haptics.destroy();
+		});
 	});
 });

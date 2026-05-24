@@ -9,6 +9,16 @@ import {
 import type { PresetName } from "@haptics/core";
 import { HAPTICS_INJECTION_KEY } from "./plugin";
 
+/** Options for the imperative `trigger()` call. */
+export interface TriggerOptions {
+	/**
+	 * When true, the vibration pattern repeats continuously until `cancel()`
+	 * is called. Loop affects the Android (Vibration API) path only — iOS
+	 * triggers remain best-effort single-tick per call. Default: false.
+	 */
+	repeat?: boolean;
+}
+
 /**
  * Composable for imperative haptic feedback.
  *
@@ -23,6 +33,14 @@ export function useHaptics() {
 	const respectReducedMotion = ctx?.respectReducedMotion ?? false;
 
 	const prefersReducedMotion = ref(false);
+	let loopId: ReturnType<typeof setTimeout> | null = null;
+
+	const clearLoop = () => {
+		if (loopId !== null) {
+			clearTimeout(loopId);
+			loopId = null;
+		}
+	};
 
 	onMounted(() => {
 		if (typeof window === "undefined" || !window.matchMedia) return;
@@ -37,24 +55,43 @@ export function useHaptics() {
 
 		onUnmounted(() => {
 			mql.removeEventListener("change", onChange);
+			clearLoop();
 		});
 	});
 
-	const trigger = (action: PresetName | (string & {})) => {
+	const trigger = (
+		action: PresetName | (string & {}),
+		options?: TriggerOptions,
+	) => {
 		if (respectReducedMotion && prefersReducedMotion.value) return;
 
 		if (!Object.prototype.hasOwnProperty.call(patterns, action)) return;
 		const pattern = patterns[action as keyof typeof patterns];
 		if (!pattern) return;
 
+		clearLoop();
+
 		if (isVibrationSupported()) {
-			navigator.vibrate(toVibrateSequence(pattern));
+			const seq = toVibrateSequence(pattern);
+			navigator.vibrate(seq);
+			if (options?.repeat) {
+				const totalMs = Math.max(
+					1,
+					seq.reduce((s, n) => s + n, 0),
+				);
+				const tick = () => {
+					navigator.vibrate(seq);
+					loopId = setTimeout(tick, totalMs);
+				};
+				loopId = setTimeout(tick, totalMs);
+			}
 		} else if (isIOS()) {
 			schedulePattern(pattern);
 		}
 	};
 
 	const cancel = () => {
+		clearLoop();
 		if (isVibrationSupported()) navigator.vibrate(0);
 	};
 

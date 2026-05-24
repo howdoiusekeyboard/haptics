@@ -10,6 +10,16 @@ export interface HapticsPluginOptions {
 	 * The CSS query targets visual animation; iOS has a separate System Haptics toggle.
 	 */
 	respectReducedMotion?: boolean;
+	/**
+	 * Outline injected iOS overlays + log attach/detach events via console.debug.
+	 * Pure development aid. Default: false.
+	 */
+	debugOverlay?: boolean;
+	/**
+	 * Play a WebAudio click cue on desktop browsers (no Vibration API, not iOS).
+	 * Lazy-loaded — no bundle cost when omitted. Default: false.
+	 */
+	audioFallback?: boolean;
 }
 
 export interface HapticsContext {
@@ -39,6 +49,8 @@ export const HapticsPlugin = {
 
 		_cleanup = attachHaptics({
 			respectReducedMotion,
+			debugOverlay: options.debugOverlay ?? false,
+			audioFallback: options.audioFallback ?? false,
 			getPattern: (name) =>
 				Object.prototype.hasOwnProperty.call(patterns, name)
 					? patterns[name]

@@ -4,6 +4,25 @@ import type { HapticPattern } from "./types";
 const MAX_PATTERN_SEGMENTS = 64;
 const MAX_TOTAL_OFFSET_MS = 60_000;
 
+/**
+ * Minimum vibrate-slot duration on Android. Phone vibration motors are
+ * mass-on-spring systems that need sustained drive time (~5ms+) to produce
+ * any perceptible output. Sub-5ms pulses are below the threshold and were
+ * the failure mode that PWM-style intensity modulation hit on real devices.
+ * Adopted from `web-haptics` PR #28.
+ */
+const MIN_VIBRATE_MS = 5;
+
+/**
+ * Tick-spacing range for iOS overlay multi-tick scheduling. At intensity 1.0,
+ * ticks fire every ~16ms (one frame); at intensity 0.0, every ~200ms (sparse).
+ * Higher intensity = tighter ticks = stronger perceived feeling on iOS 17.4–26.4.
+ * On iOS 26.5+, only the first tick survives Apple's patch — this scheduler runs
+ * but the programmatic .click()s no-op silently. Values match `web-haptics`.
+ */
+const TOGGLE_MIN_MS = 16;
+const TOGGLE_MAX_MS = 184;
+
 /** Attribute marking the injected switch overlay on iOS hosts. */
 const OVERLAY_ATTR = "data-haptic-overlay";
 /** Attribute marking that an Android click listener has been attached. */
@@ -77,6 +96,66 @@ function clampMs(n: number | undefined): number {
 	return Math.max(0, Math.floor(n as number));
 }
 
+/** Coerce intensity into [0, 1]. Undefined defaults to 1 (no scaling). */
+function clampIntensity(n: number | undefined): number {
+	if (n === undefined || !Number.isFinite(n)) return 1;
+	return Math.max(0, Math.min(1, n as number));
+}
+
+/** Tick-spacing for iOS overlay multi-tick scheduling, interpolated by intensity. */
+function intensityToTickGapMs(intensity: number | undefined): number {
+	return TOGGLE_MIN_MS + (1 - clampIntensity(intensity)) * TOGGLE_MAX_MS;
+}
+
+/**
+ * Schedule a sequence of ticks at cumulative ms offsets, driven by
+ * `requestAnimationFrame`. Each frame checks elapsed time and fires
+ * any due ticks. Higher temporal precision than setTimeout under load
+ * (RAF aligns with paint; setTimeout has 4–15ms jitter).
+ *
+ * No-ops when RAF is unavailable — every browser that supports the
+ * iOS 17.4+ checkbox-switch haptic trick (and every modern Android
+ * Chrome) has RAF, so the fallback is dead code in practice.
+ */
+function scheduleTicksRAF(
+	offsets: number[],
+	onTick: () => void,
+): () => void {
+	if (offsets.length === 0) return () => {};
+	if (typeof requestAnimationFrame !== "function") return () => {};
+
+	let cancelled = false;
+	let rafId: number | null = null;
+	let startTime: number | null = null;
+	let nextIndex = 0;
+
+	const loop = (time: number) => {
+		if (cancelled) return;
+		if (startTime === null) startTime = time;
+		const elapsed = time - startTime;
+
+		while (
+			nextIndex < offsets.length &&
+			elapsed >= offsets[nextIndex]!
+		) {
+			onTick();
+			nextIndex++;
+		}
+
+		rafId = nextIndex < offsets.length ? requestAnimationFrame(loop) : null;
+	};
+
+	rafId = requestAnimationFrame(loop);
+
+	return () => {
+		cancelled = true;
+		if (rafId !== null) {
+			cancelAnimationFrame(rafId);
+			rafId = null;
+		}
+	};
+}
+
 /**
  * Play a multi-segment haptic pattern on iOS.
  * Each segment produces one tick, with delays honored via setTimeout.
@@ -117,6 +196,15 @@ export function schedulePattern(pattern: HapticPattern): () => void {
  * Leading delays need a 0ms vibration prefix. Consecutive vibration
  * segments without a delay between them need a 0ms pause inserted.
  *
+ * Intensity (2.1.0): when `vibration.intensity` is < 1, the segment's
+ * duration is scaled (`scaled = max(5, round(duration * intensity))`)
+ * and the remainder is pushed as silence. This produces a shorter
+ * vibrate at full motor power — perceptible on real Android devices,
+ * unlike PWM-style modulation which chops below the motor's response
+ * threshold (see `web-haptics` PR #28). `intensity` of 0 collapses the
+ * segment into the surrounding off-time; `intensity` >= 1 (or undefined)
+ * preserves pre-2.1.0 pass-through behavior.
+ *
  * Values are coerced to non-negative integers and the segment count
  * is capped — some Android builds throw a TypeError on negative or
  * non-integer values, breaking the click handler.
@@ -126,16 +214,53 @@ export function toVibrateSequence(pattern: HapticPattern): number[] {
 	const limit = Math.min(pattern.length, MAX_PATTERN_SEGMENTS);
 	for (let i = 0; i < limit; i++) {
 		const v = pattern[i];
+		const intensity = clampIntensity(v.intensity);
 		const delay = clampMs(v.delay);
+		const duration = clampMs(v.duration);
+
+		// Place the delay into the appropriate off-slot.
 		if (delay > 0) {
 			if (seq.length === 0) {
-				seq.push(0);
+				seq.push(0); // leading 0-vibrate prefix
+				seq.push(delay);
+			} else if (seq.length % 2 === 0) {
+				seq[seq.length - 1]! += delay; // merge into trailing off-time
+			} else {
+				seq.push(delay); // fill open off-slot
 			}
-			seq.push(delay);
-		} else if (seq.length > 0) {
+		}
+
+		// Intensity 0: silence — extend the surrounding off-time.
+		if (intensity <= 0) {
+			if (duration === 0) continue;
+			if (seq.length === 0) {
+				seq.push(0);
+				seq.push(duration);
+			} else if (seq.length % 2 === 0) {
+				seq[seq.length - 1]! += duration;
+			} else {
+				seq.push(duration);
+			}
+			continue;
+		}
+
+		// Ensure a separator before the next vibrate when no delay was placed
+		// — preserves the alternation invariant of `navigator.vibrate`.
+		if (seq.length > 0 && seq.length % 2 === 1 && delay === 0) {
 			seq.push(0);
 		}
-		seq.push(clampMs(v.duration));
+
+		if (intensity >= 1) {
+			seq.push(duration);
+		} else {
+			const scaled = Math.max(
+				MIN_VIBRATE_MS,
+				Math.round(duration * intensity),
+			);
+			seq.push(scaled);
+			const remainder = duration - scaled;
+			if (remainder > 0) seq.push(remainder);
+		}
 	}
 	return seq;
 }
@@ -164,6 +289,36 @@ export interface AttachHapticsOptions {
 	 * or other animation-specific reasons.
 	 */
 	respectReducedMotion?: boolean;
+	/**
+	 * When true, injected iOS overlays get a dashed outline so you can see where
+	 * they were attached, and each attach/detach event is logged via console.debug
+	 * (including dynamic mounts picked up by the MutationObserver). Default: false.
+	 *
+	 * Pure development aid — does not change haptic behavior. Safe to enable in
+	 * any environment; logs are at `debug` level so they're hidden unless you've
+	 * enabled verbose console output in DevTools.
+	 */
+	debugOverlay?: boolean;
+	/**
+	 * When true on desktop browsers (no Vibration API, not iOS), wires a tiny
+	 * WebAudio click into each `[data-haptic]` handler so developers and visitors
+	 * hear an audible cue confirming the interaction registered. No effect on iOS
+	 * or Android — those platforms already produce real haptics. Default: false.
+	 *
+	 * The audio module is loaded lazily via dynamic `import()` only when this
+	 * option is enabled, so consumers who omit it pay no bundle cost. The first
+	 * click may not play audio if the module is still loading; subsequent clicks
+	 * resolve normally. Audio is silent on browsers without `AudioContext`.
+	 */
+	audioFallback?: boolean;
+}
+
+/** Accent color used for the debugOverlay outline. */
+const DEBUG_OVERLAY_OUTLINE = "1px dashed #FF5B35";
+
+/** Centralized debug logger — keeps the long prefix on one line for gzip. */
+function dbg(tag: string, host: HTMLElement): void {
+	console.debug(`[@haptics] ${tag}`, host);
 }
 
 /**
@@ -191,10 +346,29 @@ export function attachHaptics(options: AttachHapticsOptions): () => void {
 	if (typeof document === "undefined") return () => {};
 
 	const respectReducedMotion = options.respectReducedMotion ?? false;
+	const debugOverlay = options.debugOverlay ?? false;
+	const audioFallback = options.audioFallback ?? false;
 	const selector = options.selector ?? "[data-haptic]";
 	const root = (options.root ?? document) as ParentNode & Node;
 	const detachers = new Map<HTMLElement, () => void>();
 	const overlays = new Set<HTMLInputElement>();
+
+	// Audio fallback is lazy-loaded: the click handler reads `audioPlay` at
+	// invocation time, so handlers attached before the module resolves still
+	// work (they just skip audio for the first few clicks).
+	let audioPlay: ((intensity?: number) => Promise<void>) | null = null;
+	if (audioFallback) {
+		import("./audio-fallback")
+			.then((m) => {
+				audioPlay = m.playClickSound;
+			})
+			.catch((err) => {
+				// Surface the failure once — chunk-load errors (CSP, CDN, bundler
+				// misconfig) would otherwise leave the consumer wondering why the
+				// audio cue never plays. Subsequent clicks just no-op.
+				console.warn("[@haptics] audio-fallback chunk failed to load", err);
+			});
+	}
 
 	let reducedMotion = false;
 	let mql: MediaQueryList | null = null;
@@ -220,11 +394,32 @@ export function attachHaptics(options: AttachHapticsOptions): () => void {
 
 	const attach: ((el: HTMLElement) => (() => void) | undefined) | null =
 		isVibrationSupported()
-			? (el) => attachAndroidListener(el, options.getPattern, isReduced)
+			? (el) =>
+					attachAndroidListener(
+						el,
+						options.getPattern,
+						isReduced,
+						debugOverlay,
+					)
 			: isIOS()
 				? (el) =>
-						attachIOSOverlay(el, options.getPattern, overlays, isReduced)
-				: null;
+						attachIOSOverlay(
+							el,
+							options.getPattern,
+							overlays,
+							isReduced,
+							debugOverlay,
+						)
+				: audioFallback
+					? (el) =>
+							attachDesktopAudio(
+								el,
+								options.getPattern,
+								isReduced,
+								() => audioPlay,
+								debugOverlay,
+							)
+					: null;
 
 	if (!attach) {
 		if (mql && onMqlChange) mql.removeEventListener("change", onMqlChange);
@@ -289,6 +484,7 @@ function attachIOSOverlay(
 	getPattern: (name: string) => HapticPattern | undefined,
 	overlays: Set<HTMLInputElement>,
 	isReduced: () => boolean,
+	debugOverlay: boolean,
 ): (() => void) | undefined {
 	if (host.querySelector(`[${OVERLAY_ATTR}]`)) return;
 
@@ -317,27 +513,54 @@ function attachIOSOverlay(
 		"-webkit-appearance:switch;appearance:auto;" +
 		"opacity:0;cursor:inherit;" +
 		`pointer-events:${isReduced() ? "none" : "auto"};`;
+	if (debugOverlay) {
+		sw.style.outline = DEBUG_OVERLAY_OUTLINE;
+		sw.style.outlineOffset = "-1px";
+		dbg("iOS+", host);
+	}
 
-	let pendingTimers: ReturnType<typeof setTimeout>[] = [];
+	let cancelPendingTicks: (() => void) | null = null;
+	// Set to true while the multi-tick scheduler fires a programmatic sw.click()
+	// so the resulting re-entrant onClick skips setup and host re-dispatch — the
+	// click side effect (haptic on iOS 17.4–26.4) still fires, but consumer
+	// onclick handlers only see one logical invocation per user tap.
+	let isProgrammaticTick = false;
 
 	const onClick = (e: Event) => {
+		// On programmatic re-entry, still stop the click from bubbling into
+		// the host — otherwise consumer click listeners catch each tick's
+		// synthetic event and fire N times per user tap.
+		if (isProgrammaticTick) {
+			e.stopPropagation();
+			return;
+		}
+
 		e.stopPropagation();
 		host.focus({ preventScroll: true });
 
 		const name = host.getAttribute("data-haptic");
 		const pattern = name ? getPattern(name) : undefined;
 		if (pattern && pattern.length > 1) {
-			for (const t of pendingTimers) clearTimeout(t);
-			pendingTimers = [];
+			cancelPendingTicks?.();
 			const limit = Math.min(pattern.length, MAX_PATTERN_SEGMENTS);
-			let offsetMs = clampMs(pattern[0].duration);
+			// Tick spacing is intensity-driven, not duration-driven — pattern
+			// `duration` is meaningful on Android (motor drive time) but not on
+			// iOS overlay (each tick is a discrete event). Higher intensity
+			// produces tighter ticks, giving stronger perceived feeling.
+			const offsets: number[] = [];
+			let offsetMs = intensityToTickGapMs(pattern[0].intensity);
 			for (let i = 1; i < limit; i++) {
 				const v = pattern[i];
 				offsetMs += clampMs(v.delay);
 				if (offsetMs > MAX_TOTAL_OFFSET_MS) break;
-				pendingTimers.push(setTimeout(() => sw.click(), offsetMs));
-				offsetMs += clampMs(v.duration);
+				offsets.push(offsetMs);
+				offsetMs += intensityToTickGapMs(v.intensity);
 			}
+			cancelPendingTicks = scheduleTicksRAF(offsets, () => {
+				isProgrammaticTick = true;
+				sw.click();
+				isProgrammaticTick = false;
+			});
 		}
 
 		host.dispatchEvent(
@@ -350,26 +573,60 @@ function attachIOSOverlay(
 	overlays.add(sw);
 
 	return () => {
-		for (const t of pendingTimers) clearTimeout(t);
-		pendingTimers = [];
+		cancelPendingTicks?.();
+		cancelPendingTicks = null;
 		sw.removeEventListener("click", onClick);
 		overlays.delete(sw);
 		sw.remove();
+		if (debugOverlay) dbg("iOS-", host);
 	};
 }
 
 /**
- * Attach a click listener to an Android host that calls `navigator.vibrate`
- * with the resolved pattern. Idempotent. Returns a teardown function.
+ * Desktop fallback: attach a click listener that plays a WebAudio click cue
+ * via the lazily-loaded audio-fallback module. Used only when `audioFallback`
+ * is enabled and the platform has no native haptic path (no Vibration API,
+ * not iOS). Idempotent — same ATTACHED_ATTR marker as the Android path.
  */
+function attachDesktopAudio(
+	host: HTMLElement,
+	getPattern: (name: string) => HapticPattern | undefined,
+	isReduced: () => boolean,
+	getAudioPlay: () => ((intensity?: number) => Promise<void>) | null,
+	debugOverlay: boolean,
+): (() => void) | undefined {
+	if (host.hasAttribute(ATTACHED_ATTR)) return;
+	host.setAttribute(ATTACHED_ATTR, "");
+	if (debugOverlay) dbg("Audio+", host);
+	const onClick = () => {
+		if (isReduced()) return;
+		const name = host.getAttribute("data-haptic");
+		if (!name) return;
+		const pattern = getPattern(name);
+		if (!pattern || pattern.length === 0) return;
+		const play = getAudioPlay();
+		if (!play) return;
+		play(pattern[0].intensity ?? 1).catch((err) => {
+			console.warn("[@haptics] audio fallback play failed", err);
+		});
+	};
+	host.addEventListener("click", onClick);
+	return () => {
+		host.removeEventListener("click", onClick);
+		host.removeAttribute(ATTACHED_ATTR);
+		if (debugOverlay) dbg("Audio-", host);
+	};
+}
+
 function attachAndroidListener(
 	host: HTMLElement,
 	getPattern: (name: string) => HapticPattern | undefined,
 	isReduced: () => boolean,
+	debugOverlay: boolean,
 ): (() => void) | undefined {
 	if (host.hasAttribute(ATTACHED_ATTR)) return;
 	host.setAttribute(ATTACHED_ATTR, "");
-
+	if (debugOverlay) dbg("Android+", host);
 	const onClick = () => {
 		if (isReduced()) return;
 		const name = host.getAttribute("data-haptic");
@@ -379,9 +636,9 @@ function attachAndroidListener(
 		navigator.vibrate(toVibrateSequence(pattern));
 	};
 	host.addEventListener("click", onClick);
-
 	return () => {
 		host.removeEventListener("click", onClick);
 		host.removeAttribute(ATTACHED_ATTR);
+		if (debugOverlay) dbg("Android-", host);
 	};
 }

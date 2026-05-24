@@ -19,12 +19,23 @@ import { HapticsContext } from "./provider";
  *
  * Works with or without HapticsProvider — falls back to built-in presets.
  */
+/** Options for the imperative `trigger()` call. */
+export interface TriggerOptions {
+	/**
+	 * When true, the vibration pattern repeats continuously until `cancel()`
+	 * is called. Loop affects the Android (Vibration API) path only — iOS
+	 * triggers remain best-effort single-tick per call. Default: false.
+	 */
+	repeat?: boolean;
+}
+
 export function useHaptics() {
 	const ctx = useContext(HapticsContext);
 	const patterns = ctx?.patterns ?? PRESETS;
 	const respectReducedMotion = ctx?.respectReducedMotion ?? false;
 
 	const reducedMotionRef = useRef(false);
+	const loopIdRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
 	useEffect(() => {
 		const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -34,29 +45,57 @@ export function useHaptics() {
 			reducedMotionRef.current = e.matches;
 		};
 		mql.addEventListener("change", onChange);
-		return () => mql.removeEventListener("change", onChange);
+		return () => {
+			mql.removeEventListener("change", onChange);
+			if (loopIdRef.current !== null) {
+				clearTimeout(loopIdRef.current);
+				loopIdRef.current = null;
+			}
+		};
+	}, []);
+
+	const clearLoop = useCallback(() => {
+		if (loopIdRef.current !== null) {
+			clearTimeout(loopIdRef.current);
+			loopIdRef.current = null;
+		}
 	}, []);
 
 	const trigger = useCallback(
-		(action: PresetName | (string & {})) => {
+		(action: PresetName | (string & {}), options?: TriggerOptions) => {
 			if (respectReducedMotion && reducedMotionRef.current) return;
 
 			if (!Object.prototype.hasOwnProperty.call(patterns, action)) return;
 			const pattern = patterns[action as keyof typeof patterns];
 			if (!pattern) return;
 
+			clearLoop();
+
 			if (isVibrationSupported()) {
-				navigator.vibrate(toVibrateSequence(pattern));
+				const seq = toVibrateSequence(pattern);
+				navigator.vibrate(seq);
+				if (options?.repeat) {
+					const totalMs = Math.max(
+						1,
+						seq.reduce((s, n) => s + n, 0),
+					);
+					const tick = () => {
+						navigator.vibrate(seq);
+						loopIdRef.current = setTimeout(tick, totalMs);
+					};
+					loopIdRef.current = setTimeout(tick, totalMs);
+				}
 			} else if (isIOS()) {
 				schedulePattern(pattern);
 			}
 		},
-		[patterns, respectReducedMotion],
+		[patterns, respectReducedMotion, clearLoop],
 	);
 
 	const cancel = useCallback(() => {
+		clearLoop();
 		if (isVibrationSupported()) navigator.vibrate(0);
-	}, []);
+	}, [clearLoop]);
 
 	return {
 		trigger,

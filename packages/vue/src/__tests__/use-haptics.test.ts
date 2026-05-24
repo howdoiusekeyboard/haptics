@@ -55,7 +55,7 @@ describe("useHaptics", () => {
 	it("triggers vibration for a built-in preset", () => {
 		const { result } = mountComposable(() => useHaptics());
 		result.trigger("selection");
-		expect(vibrateMock).toHaveBeenCalledWith([15]);
+		expect(vibrateMock).toHaveBeenCalledWith([9, 6]);
 	});
 
 	it("does not call vibrate for unknown preset", () => {
@@ -86,5 +86,44 @@ describe("useHaptics", () => {
 		result.trigger("constructor");
 		result.trigger("toString");
 		expect(vibrateMock).not.toHaveBeenCalled();
+	});
+
+	describe("repeat option (2.1.0)", () => {
+		beforeEach(() => {
+			vi.useFakeTimers();
+		});
+
+		afterEach(() => {
+			vi.useRealTimers();
+		});
+
+		it("re-fires vibration on a loop when repeat is true", () => {
+			const { result } = mountComposable(() => useHaptics());
+			result.trigger("selection", { repeat: true });
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+
+			vi.advanceTimersByTime(100);
+			expect(vibrateMock.mock.calls.length).toBeGreaterThan(1);
+
+			result.cancel();
+		});
+
+		it("cancel() stops the loop", () => {
+			const { result } = mountComposable(() => useHaptics());
+			result.trigger("selection", { repeat: true });
+			result.cancel();
+
+			const callsAfterCancel = vibrateMock.mock.calls.length;
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock.mock.calls.length).toBe(callsAfterCancel);
+		});
+
+		it("does not loop when repeat is omitted", () => {
+			const { result } = mountComposable(() => useHaptics());
+			result.trigger("selection");
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock).toHaveBeenCalledTimes(1);
+		});
 	});
 });
