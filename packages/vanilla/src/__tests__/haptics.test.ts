@@ -197,5 +197,16 @@ describe("Haptics", () => {
 			expect(vibrateMock).toHaveBeenCalledTimes(1);
 			h.destroy();
 		});
+
+		it("rejects empty-pattern + repeat without scheduling a loop", () => {
+			// Diff-review Finding 1: an empty pattern with repeat:true would
+			// otherwise schedule setTimeout(_, 1ms) and spam navigator.vibrate([]).
+			const h = new Haptics({ patterns: { empty: [] } });
+			h.trigger("empty", { repeat: true });
+			expect(vibrateMock).not.toHaveBeenCalled();
+			vi.advanceTimersByTime(500);
+			expect(vibrateMock).not.toHaveBeenCalled();
+			h.destroy();
+		});
 	});
 });

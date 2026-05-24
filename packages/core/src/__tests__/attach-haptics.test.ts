@@ -579,6 +579,68 @@ describe("attachHaptics (iOS overlay path)", () => {
 			expect(cancelRAFSpy).toHaveBeenCalled();
 		});
 
+		it("a late RAF callback after teardown does not fire a tick (cancelled flag)", () => {
+			// Even if the browser delivers an already-queued RAF callback after
+			// cancelAnimationFrame ran, the closure's cancelled flag must
+			// short-circuit before sw.click() executes.
+			const { overlay, teardown, clickSpy } = setupOverlayWithPattern([
+				{ duration: 25, intensity: 1.0 },
+				{ duration: 25, intensity: 1.0 },
+			]);
+
+			overlay.click();
+			expect(clickSpy).toHaveBeenCalledTimes(1); // user click only
+
+			// Capture the pending RAF before teardown.
+			const pending = rafQueue.shift();
+			expect(pending).toBeDefined();
+
+			teardown();
+
+			// Simulate browser delivering the already-queued callback after disconnect.
+			pending!.cb(16);
+
+			// No additional sw.click() — the cancelled flag short-circuited.
+			expect(clickSpy).toHaveBeenCalledTimes(1);
+		});
+
+		it("re-attaching after teardown gives a fresh independent overlay (no leak from old closure)", () => {
+			const btn = document.createElement("button");
+			btn.setAttribute("data-haptic", "tap");
+			document.body.appendChild(btn);
+
+			const pattern: HapticPattern = [
+				{ duration: 25, intensity: 1.0 },
+				{ duration: 25, intensity: 1.0 },
+			];
+
+			const teardown1 = attachHaptics({ getPattern: () => pattern });
+			const overlay1 = btn.querySelector(
+				"[data-haptic-overlay]",
+			) as HTMLInputElement;
+			overlay1.click();
+			const pendingFromFirstMount = rafQueue.shift();
+
+			teardown1();
+			// Old overlay should be detached.
+			expect(btn.querySelector("[data-haptic-overlay]")).toBeNull();
+
+			const teardown2 = attachHaptics({ getPattern: () => pattern });
+			const overlay2 = btn.querySelector(
+				"[data-haptic-overlay]",
+			) as HTMLInputElement;
+			expect(overlay2).not.toBeNull();
+			expect(overlay2).not.toBe(overlay1); // fresh element
+
+			// Late callback from the first mount fires — must not touch the new overlay.
+			const clickSpy2 = vi.spyOn(overlay2, "click");
+			pendingFromFirstMount!.cb(50);
+			expect(clickSpy2).not.toHaveBeenCalled();
+
+			teardown2();
+			clickSpy2.mockRestore();
+		});
+
 		it("does not cascade host clicks for multi-tick patterns", () => {
 			// Regression: each programmatic sw.click() must NOT re-dispatch to the host,
 			// otherwise consumer onclick fires N times per user tap (one per tick).

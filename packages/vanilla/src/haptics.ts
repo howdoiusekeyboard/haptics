@@ -115,7 +115,7 @@ export class Haptics {
 
 		if (!Object.prototype.hasOwnProperty.call(this.patterns, action)) return;
 		const pattern = this.patterns[action];
-		if (!pattern) return;
+		if (!pattern || pattern.length === 0) return;
 
 		this.clearLoop();
 

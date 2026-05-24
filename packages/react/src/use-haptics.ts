@@ -67,7 +67,7 @@ export function useHaptics() {
 
 			if (!Object.prototype.hasOwnProperty.call(patterns, action)) return;
 			const pattern = patterns[action as keyof typeof patterns];
-			if (!pattern) return;
+			if (!pattern || pattern.length === 0) return;
 
 			clearLoop();
 
