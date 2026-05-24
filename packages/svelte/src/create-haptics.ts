@@ -41,7 +41,7 @@ export interface HapticsController {
 export function createHaptics(): HapticsController {
 	const config = getHapticsConfig();
 	const patterns = config?.patterns ?? PRESETS;
-	const respectReducedMotion = config?.respectReducedMotion ?? true;
+	const respectReducedMotion = config?.respectReducedMotion ?? false;
 
 	let prefersReducedMotion = false;
 	let mqlCleanup: (() => void) | null = null;

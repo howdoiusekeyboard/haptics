@@ -20,7 +20,7 @@ import { HAPTICS_INJECTION_KEY } from "./plugin";
 export function useHaptics() {
 	const ctx = inject(HAPTICS_INJECTION_KEY, null);
 	const patterns = ctx?.patterns ?? PRESETS;
-	const respectReducedMotion = ctx?.respectReducedMotion ?? true;
+	const respectReducedMotion = ctx?.respectReducedMotion ?? false;
 
 	const prefersReducedMotion = ref(false);
 

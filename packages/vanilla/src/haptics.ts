@@ -4,58 +4,63 @@ import {
 	isIOS,
 	toVibrateSequence,
 	schedulePattern,
+	attachHaptics,
 } from "@haptics/core";
 import type { HapticPattern, PresetName } from "@haptics/core";
 
 export interface HapticsOptions {
 	/**
-	 * Element to delegate click events from. The capture-phase listener
-	 * is registered on this element. Default: document.
+	 * Root to scan for haptic-triggering elements and observe for new ones.
+	 * Default: document.
 	 */
-	delegateFrom?: Element | Document;
+	delegateFrom?: ParentNode;
 	/**
-	 * CSS selector for elements that trigger haptics on click.
-	 * Default: "[data-haptic]"
+	 * CSS selector for haptic-triggering elements. The matched element must
+	 * also carry a `data-haptic="<name>"` attribute. Default: `"[data-haptic]"`.
 	 */
 	selector?: string;
 	/** Custom patterns merged with built-in presets. */
 	patterns?: Record<string, HapticPattern>;
-	/** Suppress haptics when prefers-reduced-motion is active. Default: true */
+	/**
+	 * Suppress haptics when `prefers-reduced-motion: reduce` is active. Default: `false`.
+	 * The CSS query targets visual animation; iOS has a separate System Haptics toggle.
+	 */
 	respectReducedMotion?: boolean;
 }
 
 /**
  * Zero-framework haptic feedback controller.
  *
- * Registers a capture-phase click listener that intercepts clicks on
- * elements matching the selector, reads the pattern name from data-haptic,
- * and fires the appropriate haptic feedback.
+ * Constructing an instance wires every `[data-haptic]` element under the
+ * delegate root with the platform-appropriate handler — an invisible switch
+ * overlay on iOS (the only surface that survives Apple's 26.5 patch), a
+ * click listener calling `navigator.vibrate` on Android. New `[data-haptic]`
+ * elements added later are picked up via MutationObserver.
  *
- * Works with HTMX, Alpine.js, Stimulus, plain HTML — anything.
+ * Works with HTMX, Alpine.js, Stimulus, plain HTML — anything that mutates
+ * the DOM.
  */
 export class Haptics {
 	private readonly patterns: Record<string, HapticPattern>;
 	private readonly respectReducedMotion: boolean;
-	private readonly delegateFrom: Element | Document;
-	private readonly selector: string;
 	private prefersReducedMotion = false;
 	private destroyed = false;
-	private readonly clickHandler: (e: Event) => void;
 	private mqlHandler: ((e: MediaQueryListEvent) => void) | null = null;
 	private mql: MediaQueryList | null = null;
 	private lastCancel: (() => void) | null = null;
+	private detach: () => void;
 
 	readonly isSupported: boolean;
 	readonly isIOSSupported: boolean;
 
 	constructor(options: HapticsOptions = {}) {
 		this.patterns = { ...PRESETS, ...options.patterns };
-		this.respectReducedMotion = options.respectReducedMotion ?? true;
-		this.delegateFrom = options.delegateFrom ?? document;
-		this.selector = options.selector ?? "[data-haptic]";
+		this.respectReducedMotion = options.respectReducedMotion ?? false;
 		this.isSupported = isVibrationSupported();
 		this.isIOSSupported = isIOS();
 
+		// Track reduced-motion state for the imperative trigger() path.
+		// attachHaptics handles its own matchMedia listener for the declarative path.
 		if (
 			this.respectReducedMotion &&
 			typeof window !== "undefined" &&
@@ -69,31 +74,14 @@ export class Haptics {
 			this.mql.addEventListener("change", this.mqlHandler);
 		}
 
-		this.clickHandler = (e: Event) => {
-			if (this.destroyed) return;
-			if (this.respectReducedMotion && this.prefersReducedMotion) return;
-
-			const target = (e.target as Element)?.closest(this.selector);
-			if (!target) return;
-
-			const action = target.getAttribute("data-haptic");
-			if (
-				!action ||
-				!Object.prototype.hasOwnProperty.call(this.patterns, action)
-			)
-				return;
-
-			const pattern = this.patterns[action];
-			if (this.isSupported) {
-				navigator.vibrate(toVibrateSequence(pattern));
-			} else if (this.isIOSSupported) {
-				this.lastCancel = schedulePattern(pattern);
-			}
-		};
-
-		this.delegateFrom.addEventListener("click", this.clickHandler, {
-			capture: true,
-			passive: true,
+		this.detach = attachHaptics({
+			root: options.delegateFrom,
+			selector: options.selector,
+			respectReducedMotion: this.respectReducedMotion,
+			getPattern: (name) =>
+				Object.prototype.hasOwnProperty.call(this.patterns, name)
+					? this.patterns[name]
+					: undefined,
 		});
 	}
 
@@ -120,14 +108,12 @@ export class Haptics {
 		this.lastCancel = null;
 	}
 
-	/** Remove all listeners and clean up. */
+	/** Remove all handlers and clean up. */
 	destroy(): void {
 		if (this.destroyed) return;
 		this.destroyed = true;
 
-		this.delegateFrom.removeEventListener("click", this.clickHandler, {
-			capture: true,
-		} as EventListenerOptions);
+		this.detach();
 
 		if (this.mql && this.mqlHandler) {
 			this.mql.removeEventListener("change", this.mqlHandler);

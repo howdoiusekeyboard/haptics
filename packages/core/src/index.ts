@@ -13,4 +13,6 @@ export {
 	iosTick,
 	schedulePattern,
 	toVibrateSequence,
+	attachHaptics,
 } from "./engine";
+export type { AttachHapticsOptions } from "./engine";

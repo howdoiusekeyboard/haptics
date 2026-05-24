@@ -3,11 +3,24 @@ import { createApp, defineComponent, h } from "vue";
 import { resetDetection } from "@haptics/core";
 import { HapticsPlugin, _resetPlugin } from "../plugin";
 
+let vibrateMock: ReturnType<typeof vi.fn>;
+
 beforeEach(() => {
+	vibrateMock = vi.fn(() => true);
+	Object.defineProperty(navigator, "vibrate", {
+		value: vibrateMock,
+		writable: true,
+		configurable: true,
+	});
 	resetDetection();
 });
 
 afterEach(() => {
+	Object.defineProperty(navigator, "vibrate", {
+		value: undefined,
+		writable: true,
+		configurable: true,
+	});
 	resetDetection();
 	_resetPlugin();
 });
@@ -35,83 +48,83 @@ describe("HapticsPlugin", () => {
 			app.use(HapticsPlugin, { respectReducedMotion: false }),
 		).not.toThrow();
 	});
-});
 
-describe("HapticsPlugin idempotency (iOS path)", () => {
-	let originalUA: string;
-	let originalVibrate: unknown;
-	let addSpy: ReturnType<typeof vi.spyOn>;
-	let removeSpy: ReturnType<typeof vi.spyOn>;
+	it("wires Android click delegation for elements present at install time", () => {
+		const btn = document.createElement("button");
+		btn.setAttribute("data-haptic", "selection");
+		document.body.appendChild(btn);
 
-	beforeEach(() => {
-		originalUA = navigator.userAgent;
-		originalVibrate = (navigator as { vibrate?: unknown }).vibrate;
-		Object.defineProperty(navigator, "userAgent", {
-			value:
-				"Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15",
-			writable: true,
-			configurable: true,
-		});
-		Object.defineProperty(navigator, "vibrate", {
-			value: undefined,
-			writable: true,
-			configurable: true,
-		});
-		resetDetection();
-		addSpy = vi.spyOn(document, "addEventListener");
-		removeSpy = vi.spyOn(document, "removeEventListener");
-	});
-
-	afterEach(() => {
-		Object.defineProperty(navigator, "userAgent", {
-			value: originalUA,
-			writable: true,
-			configurable: true,
-		});
-		Object.defineProperty(navigator, "vibrate", {
-			value: originalVibrate,
-			writable: true,
-			configurable: true,
-		});
-		addSpy.mockRestore();
-		removeSpy.mockRestore();
-	});
-
-	it("attaches a capture-phase click listener on install", () => {
 		const app = createApp(defineComponent({ setup: () => () => h("div") }));
 		app.use(HapticsPlugin);
-		const clickAdds = addSpy.mock.calls.filter((c) => c[0] === "click");
-		expect(clickAdds.length).toBe(1);
+
+		btn.click();
+		expect(vibrateMock).toHaveBeenCalledWith([15]);
+
+		document.body.removeChild(btn);
 	});
 
-	it("removes prior listeners when reinstalled (idempotent)", () => {
+	it("picks up dynamically-added [data-haptic] elements via MutationObserver", async () => {
+		const app = createApp(defineComponent({ setup: () => () => h("div") }));
+		app.use(HapticsPlugin);
+
+		const btn = document.createElement("button");
+		btn.setAttribute("data-haptic", "selection");
+		document.body.appendChild(btn);
+
+		await Promise.resolve();
+
+		btn.click();
+		expect(vibrateMock).toHaveBeenCalledWith([15]);
+
+		document.body.removeChild(btn);
+	});
+
+	it("is idempotent — re-installing tears down the prior wiring", async () => {
+		const btn = document.createElement("button");
+		btn.setAttribute("data-haptic", "selection");
+		document.body.appendChild(btn);
+
 		const app1 = createApp(defineComponent({ setup: () => () => h("div") }));
 		app1.use(HapticsPlugin);
+
 		const app2 = createApp(defineComponent({ setup: () => () => h("div") }));
 		app2.use(HapticsPlugin);
 
-		const clickRemoves = removeSpy.mock.calls.filter((c) => c[0] === "click");
-		expect(clickRemoves.length).toBe(1);
+		btn.click();
+		// Exactly one navigator.vibrate call — the prior install's handler
+		// was torn down before the second install attached its own.
+		expect(vibrateMock).toHaveBeenCalledTimes(1);
+
+		document.body.removeChild(btn);
 	});
 
-	it("_resetPlugin removes the document click listener", () => {
+	it("_resetPlugin tears down all wiring", () => {
+		const btn = document.createElement("button");
+		btn.setAttribute("data-haptic", "selection");
+		document.body.appendChild(btn);
+
 		const app = createApp(defineComponent({ setup: () => () => h("div") }));
 		app.use(HapticsPlugin);
 
 		_resetPlugin();
 
-		const clickRemoves = removeSpy.mock.calls.filter((c) => c[0] === "click");
-		expect(clickRemoves.length).toBe(1);
+		btn.click();
+		expect(vibrateMock).not.toHaveBeenCalled();
+
+		document.body.removeChild(btn);
 	});
 
 	it("ignores data-haptic values that are not own properties (e.g., __proto__)", () => {
-		const app = createApp(defineComponent({ setup: () => () => h("div") }));
-		app.use(HapticsPlugin);
-
 		const btn = document.createElement("button");
 		btn.setAttribute("data-haptic", "__proto__");
 		document.body.appendChild(btn);
+
+		const app = createApp(defineComponent({ setup: () => () => h("div") }));
+		app.use(HapticsPlugin);
+
 		expect(() => btn.click()).not.toThrow();
+		expect(vibrateMock).not.toHaveBeenCalled();
+
 		document.body.removeChild(btn);
 	});
 });

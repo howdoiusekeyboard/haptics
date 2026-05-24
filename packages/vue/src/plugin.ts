@@ -1,16 +1,14 @@
 import type { App, InjectionKey } from "vue";
-import {
-	PRESETS,
-	isIOS,
-	schedulePattern,
-} from "@haptics/core";
+import { PRESETS, attachHaptics } from "@haptics/core";
 import type { HapticPattern } from "@haptics/core";
-import { _setConfig, _setPrefersReducedMotion } from "./shared";
 
 export interface HapticsPluginOptions {
 	/** Custom patterns merged with built-in presets. Same-name customs override. */
 	patterns?: Record<string, HapticPattern>;
-	/** Suppress haptics when prefers-reduced-motion is active. Default: true */
+	/**
+	 * Suppress haptics when `prefers-reduced-motion: reduce` is active. Default: `false`.
+	 * The CSS query targets visual animation; iOS has a separate System Haptics toggle.
+	 */
 	respectReducedMotion?: boolean;
 }
 
@@ -26,7 +24,7 @@ let _cleanup: (() => void) | null = null;
 
 export const HapticsPlugin = {
 	install(app: App, options: HapticsPluginOptions = {}) {
-		// Idempotent: tear down listeners from a prior install before re-attaching.
+		// Idempotent: tear down handlers from a prior install before re-attaching.
 		// Guards against HMR, repeated app.use() calls in tests, and multiple Vue apps.
 		_cleanup?.();
 		_cleanup = null;
@@ -35,59 +33,17 @@ export const HapticsPlugin = {
 			...PRESETS,
 			...options.patterns,
 		};
-		const respectReducedMotion = options.respectReducedMotion ?? true;
+		const respectReducedMotion = options.respectReducedMotion ?? false;
 
 		app.provide(HAPTICS_INJECTION_KEY, { patterns, respectReducedMotion });
-		_setConfig(patterns, respectReducedMotion);
 
-		const cleanups: Array<() => void> = [];
-		let lastCancel: (() => void) | null = null;
-
-		if (typeof document !== "undefined" && isIOS()) {
-			let prefersReducedMotion = false;
-
-			if (typeof window !== "undefined" && window.matchMedia) {
-				const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-				prefersReducedMotion = mql.matches;
-				_setPrefersReducedMotion(prefersReducedMotion);
-
-				const onMqlChange = (e: MediaQueryListEvent) => {
-					prefersReducedMotion = e.matches;
-					_setPrefersReducedMotion(e.matches);
-				};
-				mql.addEventListener("change", onMqlChange);
-				cleanups.push(() =>
-					mql.removeEventListener("change", onMqlChange),
-				);
-			}
-
-			const handler = (e: MouseEvent) => {
-				if (respectReducedMotion && prefersReducedMotion) return;
-				const target = (e.target as Element)?.closest("[data-haptic]");
-				if (!target) return;
-				const action = target.getAttribute("data-haptic");
-				if (
-					action &&
-					Object.prototype.hasOwnProperty.call(patterns, action)
-				) {
-					lastCancel = schedulePattern(patterns[action]);
-				}
-			};
-
-			document.addEventListener("click", handler, {
-				capture: true,
-				passive: true,
-			});
-			cleanups.push(() =>
-				document.removeEventListener("click", handler, { capture: true }),
-			);
-		}
-
-		_cleanup = () => {
-			for (const fn of cleanups) fn();
-			lastCancel?.();
-			lastCancel = null;
-		};
+		_cleanup = attachHaptics({
+			respectReducedMotion,
+			getPattern: (name) =>
+				Object.prototype.hasOwnProperty.call(patterns, name)
+					? patterns[name]
+					: undefined,
+		});
 	},
 };
 

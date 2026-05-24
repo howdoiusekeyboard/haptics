@@ -22,7 +22,7 @@ import { HapticsContext } from "./provider";
 export function useHaptics() {
 	const ctx = useContext(HapticsContext);
 	const patterns = ctx?.patterns ?? PRESETS;
-	const respectReducedMotion = ctx?.respectReducedMotion ?? true;
+	const respectReducedMotion = ctx?.respectReducedMotion ?? false;
 
 	const reducedMotionRef = useRef(false);
 

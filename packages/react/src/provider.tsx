@@ -1,9 +1,5 @@
 import { createContext, useMemo, useRef, useEffect } from "react";
-import {
-	PRESETS,
-	isIOS,
-	schedulePattern,
-} from "@haptics/core";
+import { PRESETS, attachHaptics } from "@haptics/core";
 import type { HapticPattern } from "@haptics/core";
 
 export interface HapticsContextValue {
@@ -15,27 +11,31 @@ export interface HapticsProviderProps {
 	children: React.ReactNode;
 	/** Custom patterns merged with built-in presets. Custom names override presets. */
 	patterns?: Record<string, HapticPattern>;
-	/** Skip haptics when prefers-reduced-motion is active. Default: true */
+	/**
+	 * Skip haptics when `prefers-reduced-motion: reduce` is active. Default: `false`.
+	 * The CSS query targets visual animation; iOS has a separate System Haptics toggle.
+	 */
 	respectReducedMotion?: boolean;
 }
 
 export const HapticsContext = createContext<HapticsContextValue | null>(null);
 
 /**
- * Captures native click events before React's delegation layer to preserve
- * the user gesture chain required for iOS haptics.
+ * Wires every `[data-haptic]` descendant with a platform-appropriate handler.
  *
- * React 18's concurrent scheduler breaks the native gesture context when
- * synthetic event handlers call into the DOM. A capture-phase listener on
- * `document` fires BEFORE React processes the event, keeping the gesture
- * chain intact for the checkbox-switch haptic trick.
+ * On iOS the handler is an invisible `<input type="checkbox" switch>` overlay
+ * — the only surface that survives Apple's iOS 26.5 patch on the synthetic
+ * `.click()` trick. On Android the handler is a click listener that calls
+ * `navigator.vibrate`. Reduced-motion is honored automatically via the
+ * underlying `attachHaptics` helper.
  *
- * Elements opt in via `data-haptic="preset-name"` attributes.
+ * The provider re-keys its scanned root to `document` and uses a
+ * MutationObserver to pick up `[data-haptic]` elements rendered later.
  */
 export function HapticsProvider({
 	children,
 	patterns: customPatterns,
-	respectReducedMotion = true,
+	respectReducedMotion = false,
 }: HapticsProviderProps) {
 	const allPatterns = useMemo(
 		() => ({ ...PRESETS, ...customPatterns }),
@@ -45,45 +45,15 @@ export function HapticsProvider({
 	const patternsRef = useRef(allPatterns);
 	patternsRef.current = allPatterns;
 
-	const reducedMotionRef = useRef(respectReducedMotion);
-	reducedMotionRef.current = respectReducedMotion;
-
 	useEffect(() => {
-		if (!isIOS()) return;
-
-		const mql = window.matchMedia("(prefers-reduced-motion: reduce)");
-		let prefersReducedMotion = mql.matches;
-
-		const onMqlChange = (e: MediaQueryListEvent) => {
-			prefersReducedMotion = e.matches;
-		};
-		mql.addEventListener("change", onMqlChange);
-
-		let lastCancel: (() => void) | null = null;
-
-		const handler = (e: MouseEvent) => {
-			if (reducedMotionRef.current && prefersReducedMotion) return;
-			const target = (e.target as Element)?.closest("[data-haptic]");
-			if (!target) return;
-			const action = target.getAttribute("data-haptic");
-			if (
-				action &&
-				Object.prototype.hasOwnProperty.call(patternsRef.current, action)
-			) {
-				lastCancel = schedulePattern(
-					patternsRef.current[action as keyof typeof patternsRef.current],
-				);
-			}
-		};
-
-		document.addEventListener("click", handler, { capture: true, passive: true });
-
-		return () => {
-			document.removeEventListener("click", handler, { capture: true });
-			mql.removeEventListener("change", onMqlChange);
-			lastCancel?.();
-		};
-	}, []);
+		return attachHaptics({
+			respectReducedMotion,
+			getPattern: (name) =>
+				Object.prototype.hasOwnProperty.call(patternsRef.current, name)
+					? patternsRef.current[name as keyof typeof patternsRef.current]
+					: undefined,
+		});
+	}, [respectReducedMotion]);
 
 	const ctx = useMemo(
 		() => ({ patterns: allPatterns, respectReducedMotion }),

@@ -1,6 +1,4 @@
 import type { Directive } from "vue";
-import { isVibrationSupported, toVibrateSequence } from "@haptics/core";
-import { _getPatterns, _shouldSuppress } from "./shared";
 
 type HapticValue = string;
 
@@ -11,50 +9,20 @@ type HapticValue = string;
  *   <button v-haptic="'success'">Save</button>
  *   <button v-haptic="'impact-heavy'">Delete</button>
  *
- * On iOS: Sets data-haptic attribute so the plugin's capture-phase listener
- * handles it (preserving gesture chain).
- *
- * On Android: Registers a click handler that calls navigator.vibrate().
+ * Sets the `data-haptic` attribute so the plugin's `attachHaptics` install
+ * picks the element up (via initial scan or MutationObserver) and wires the
+ * platform-appropriate handler. Updating the binding rewrites the attribute;
+ * unmounting removes it.
  */
 export const vHaptic: Directive<HTMLElement, HapticValue> = {
 	mounted(el, binding) {
-		const action = binding.value;
-		if (!action) return;
-
-		el.setAttribute("data-haptic", action);
-
-		if (isVibrationSupported()) {
-			const handler = (e: Event) => {
-				if (e.defaultPrevented) return;
-				if (_shouldSuppress()) return;
-				const patterns = _getPatterns();
-				if (!Object.prototype.hasOwnProperty.call(patterns, action)) return;
-				const pattern = patterns[action];
-				if (pattern) {
-					navigator.vibrate(toVibrateSequence(pattern));
-				}
-			};
-
-			el.addEventListener("click", handler);
-			(el as any).__haptic_handler = handler;
-		}
+		if (binding.value) el.setAttribute("data-haptic", binding.value);
 	},
-
 	updated(el, binding) {
-		const action = binding.value;
-		if (action) {
-			el.setAttribute("data-haptic", action);
-		} else {
-			el.removeAttribute("data-haptic");
-		}
+		if (binding.value) el.setAttribute("data-haptic", binding.value);
+		else el.removeAttribute("data-haptic");
 	},
-
 	unmounted(el) {
 		el.removeAttribute("data-haptic");
-		const handler = (el as any).__haptic_handler;
-		if (handler) {
-			el.removeEventListener("click", handler);
-			delete (el as any).__haptic_handler;
-		}
 	},
 };

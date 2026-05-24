@@ -32,11 +32,11 @@ Mobile browsers have two haptics paths, and both have friction:
 
 ## How this works
 
-A capture-phase event listener on `document` fires **before** the framework's event system. From iOS Safari's perspective, the haptic trigger runs inside a direct native click handler — keeping the user gesture context intact.
+On iOS, the library injects an invisible `<input type="checkbox" switch>` overlay as a child of every `[data-haptic]` element. The user's finger lands on the overlay; iOS treats this as direct user interaction with a switch — the only path that survives Apple's iOS 26.5 patch — and fires native haptic feedback. The library re-dispatches the click to the host so consumer `onclick` handlers still run. iOS 17.4 – 26.4 additionally schedules subsequent ticks for multi-segment patterns via programmatic clicks on the same overlay; on iOS 26.5+ those programmatic clicks no-op and patterns degrade to a single tick.
 
-On Android, the standard Vibration API is used with pattern support.
+On Android, the standard Vibration API is used with full pattern support.
 
-Elements opt in with a single attribute. No per-component wiring.
+A `MutationObserver` watches for dynamically-added `[data-haptic]` elements so SPAs and lazy-loaded components are picked up automatically. Elements opt in with a single attribute — no per-component wiring.
 
 ## Install
 
@@ -167,14 +167,15 @@ Custom patterns are merged with built-in presets. Same-name customs override the
 
 | Prop | Type | Default | Description |
 | --- | --- | --- | --- |
-| `respectReducedMotion` | `boolean` | `true` | Suppresses haptics when `prefers-reduced-motion: reduce` is active |
+| `respectReducedMotion` | `boolean` | `false` | Suppresses haptics when `prefers-reduced-motion: reduce` is active. Default is off because the CSS query targets visual animation, not haptic feedback — iOS has a dedicated System Haptics toggle. Opt in if you want Reduce Motion to also gate haptics. |
 | `patterns` | `Record<string, HapticPattern>` | `{}` | Custom patterns merged with built-in presets |
 
 ## Platform support
 
 | Platform | Mechanism | Notes |
 | --- | --- | --- |
-| iOS Safari 17.4+ | Checkbox-switch trick | One tick per segment. Requires system haptics enabled. |
+| iOS Safari 17.4 – 26.4 | Switch overlay + programmatic re-tick | Full multi-tick patterns. Requires system haptics enabled. |
+| iOS Safari 26.5+ | Switch overlay (single tick) | One tick per user tap. Apple's 26.5 patch closed every programmatic-toggle path, so multi-segment presets degrade to single-tick. Single-tick presets (`selection`) are unaffected. |
 | Android Chrome / Edge | `navigator.vibrate()` | Full pattern support with timing sequences. |
 | Samsung Internet | `navigator.vibrate()` | Full pattern support. |
 | Firefox Android | Not supported | Vibration API removed in Firefox 129 (Aug 2024). |
@@ -214,20 +215,27 @@ import {
 
 ## Bundle size
 
-| Package | ESM (gzip) | CJS (gzip) |
-| --- | --- | --- |
-| `@haptics/core` | 1.33 KB | 1.36 KB |
-| `@haptics/react` | 1.04 KB | 1.06 KB |
-| `@haptics/vue` | 1.33 KB | 1.34 KB |
-| `@haptics/svelte` | 1.09 KB | 1.11 KB |
-| `@haptics/vanilla` | 0.89 KB | 0.90 KB |
-| `react-haptics` | 0.23 KB | 0.33 KB |
+Sizes measured after minification + gzip (level 9) — what a production bundler will actually ship.
 
-Framework adapter sizes exclude the workspace `@haptics/core` dependency (~1.33 KB gz), which is resolved by the consumer's bundler.
+| Package | ESM (min + gz) | CJS (min + gz) |
+| --- | --- | --- |
+| `@haptics/core` | 1.85 KB | 1.88 KB |
+| `@haptics/react` | 0.67 KB | 0.77 KB |
+| `@haptics/vue` | 0.67 KB | 0.77 KB |
+| `@haptics/svelte` | 0.61 KB | 0.71 KB |
+| `@haptics/vanilla` | 0.58 KB | 0.69 KB |
+
+Framework adapter sizes exclude the workspace `@haptics/core` dependency (~1.85 KB min+gz), which is resolved by the consumer's bundler. A typical React consumer ships ~2.52 KB total (adapter + core).
 
 ## Limitations
 
-**iOS imperative trigger**: `trigger()` from `useHaptics()` / `createHaptics()` attempts a best-effort iOS haptic via `schedulePattern()`, but it only works when called directly within a user gesture context (click/tap handler in the same call stack). For reliable iOS haptics, use declarative `data-haptic` attributes with `HapticsProvider` (React), `HapticsPlugin` (Vue), or `setupHaptics()` (Svelte).
+**iOS 26.5+ multi-tick presets** degrade to a single tick. Apple's 26.5 patch closed every programmatic mechanism for firing additional ticks (synchronous `.click()` chains, fresh switches per tick, `setTimeout` chains, stacked switches — all verified to deliver ≤1 buzz). `success`, `error`, `warning`, `impact-light`, `impact-medium`, `impact-heavy` all fire only their first tick on 26.5+. `selection` (single tick) is unaffected. iOS 17.4 – 26.4 retains full multi-tick. Android retains full vibration sequences.
+
+**iOS imperative trigger**: `trigger()` from `useHaptics()` / `createHaptics()` attempts a best-effort iOS haptic via `schedulePattern()`, but it only works when called directly within a user gesture context on iOS 17.4 – 26.4. On iOS 26.5+, programmatic triggers from JS no longer fire — the library's overlay only fires haptic on a real user tap on a `data-haptic` element. For reliable iOS haptics on every version, use declarative `data-haptic` attributes with `HapticsProvider` (React), `HapticsPlugin` (Vue), or `setupHaptics()` (Svelte).
+
+**Re-dispatched click events have `event.isTrusted === false`** on the consumer's `data-haptic` element (iOS path). The user's actual tap lands on the library's invisible switch overlay; the click is then re-dispatched to the host element so consumer `onclick` handlers still run. Consumer code that gates behavior on `isTrusted` (rare — mainly some form libraries and analytics SDKs) won't see these clicks as trusted. The vast majority of click handlers, including every framework's synthetic event system, treat the re-dispatched click identically to a direct one.
+
+**HTML validity of `<button data-haptic>`**: the iOS overlay is appended as a child of `[data-haptic]` elements. The HTML spec's `<button>` content model excludes interactive descendants, so HTML validators will flag this combination. Every browser renders and clicks it correctly. If you run a validation step in CI, configure it to allow the `data-haptic-overlay` attribute on `<input>` descendants of `<button>`.
 
 **Desktop**: All calls are silent no-ops. No haptic hardware exists on desktop browsers.
 
@@ -239,6 +247,6 @@ Framework adapter sizes exclude the workspace `@haptics/core` dependency (~1.33 
 
 **Pattern length cap**: Patterns are clamped to 64 segments and a total scheduled offset of 60 seconds. Runaway patterns from buggy or untrusted input are truncated rather than queueing thousands of timers.
 
-**`prefers-reduced-motion`**: Honored by default. Calls are suppressed when the user has enabled reduced motion at the OS level. Pass `respectReducedMotion={false}` to override.
+**`prefers-reduced-motion`**: Not honored by default (changed in 1.1.0). The CSS query targets visual animation, not haptic feedback; iOS provides a separate System Haptics toggle for haptic preference. Pass `respectReducedMotion={true}` if you want Reduce Motion to also gate haptics.
 
 **`event.defaultPrevented`**: The Vue directive and Svelte action skip the haptic when the click was already `preventDefault`'d by an earlier handler. The capture-phase listeners (provider / plugin / setupHaptics) run before bubble-phase `preventDefault` calls, so they always fire — useful for haptics on links that the framework intercepts for client-side navigation.

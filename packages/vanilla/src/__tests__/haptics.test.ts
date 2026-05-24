@@ -64,7 +64,7 @@ describe("Haptics", () => {
 		expect(vibrateMock).not.toHaveBeenCalled();
 	});
 
-	it("handles click delegation on data-haptic elements", () => {
+	it("handles click delegation on data-haptic elements", async () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
@@ -72,6 +72,28 @@ describe("Haptics", () => {
 		const btn = document.createElement("button");
 		btn.setAttribute("data-haptic", "selection");
 		container.appendChild(btn);
+
+		// MutationObserver fires asynchronously on the next microtask.
+		// Flush the microtask queue before clicking.
+		await Promise.resolve();
+
+		btn.click();
+		expect(vibrateMock).toHaveBeenCalledWith([15]);
+
+		h.destroy();
+		document.body.removeChild(container);
+	});
+
+	it("attaches handler to elements present at construction time", () => {
+		const container = document.createElement("div");
+		const btn = document.createElement("button");
+		btn.setAttribute("data-haptic", "selection");
+		container.appendChild(btn);
+		document.body.appendChild(container);
+
+		// Element exists before Haptics is constructed → picked up by the
+		// initial synchronous scan, no MutationObserver wait needed.
+		const h = new Haptics({ delegateFrom: container });
 
 		btn.click();
 		expect(vibrateMock).toHaveBeenCalledWith([15]);
@@ -99,7 +121,7 @@ describe("Haptics", () => {
 		h.destroy();
 	});
 
-	it("ignores __proto__ as a data-haptic value (delegation path)", () => {
+	it("ignores __proto__ as a data-haptic value (delegation path)", async () => {
 		const container = document.createElement("div");
 		document.body.appendChild(container);
 
@@ -107,6 +129,8 @@ describe("Haptics", () => {
 		const btn = document.createElement("button");
 		btn.setAttribute("data-haptic", "__proto__");
 		container.appendChild(btn);
+
+		await Promise.resolve();
 
 		expect(() => btn.click()).not.toThrow();
 		expect(vibrateMock).not.toHaveBeenCalled();
